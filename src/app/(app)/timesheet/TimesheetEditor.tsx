@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import type { Project, WorkType } from "@/db/schema";
 import type { MonthData, DayData } from "@/lib/period";
 import { WEEKDAY_VI, todayParts, ymd } from "@/lib/dates";
@@ -55,12 +55,9 @@ export default function TimesheetEditor({
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [, startTransition] = useTransition();
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const dirtyDays = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     setDrafts(Object.fromEntries(data.days.map((d) => [d.day, toDraft(d)])));
-    dirtyDays.current.clear();
   }, [data.days]);
 
   const persist = useCallback(async (dayNum: number, draft: DayDraft) => {
@@ -86,7 +83,6 @@ export default function TimesheetEditor({
         })),
     });
     if (res.ok) {
-      dirtyDays.current.delete(dayNum);
       setSaveState("saved");
       setErrorMsg(null);
       setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1600);
@@ -96,36 +92,20 @@ export default function TimesheetEditor({
     }
   }, [data.year, data.month]);
 
-  const hasMeaningfulEntry = useCallback((entry: DraftEntry) => {
-    return !!entry.projectId && !!entry.workTypeId && Number(entry.hours) > 0;
-  }, []);
-
-  const canPersistDraft = useCallback((draft: DayDraft) => {
-    if (draft.entries.some(hasMeaningfulEntry)) return true;
-    return !!draft.startMin || !!draft.endMin || draft.dayType !== "WORK"
-      || !!draft.leaveNote || !!draft.remark;
-  }, [hasMeaningfulEntry]);
-
-  const scheduleSave = useCallback((dayNum: number, draft: DayDraft) => {
-    dirtyDays.current.add(dayNum);
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => { void persist(dayNum, draft); }, 700);
-  }, [persist]);
-
   function handleChange(next: DayDraft) {
     setDrafts((prev) => ({ ...prev, [selected]: next }));
-    if (!readOnly && canPersistDraft(next)) scheduleSave(selected, next);
+  }
+
+  async function handleSave() {
+    if (readOnly) return;
+    await persist(selected, draft);
   }
 
   async function flushPending() {
-    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
-    for (const d of [...dirtyDays.current]) {
-      await persist(d, drafts[d]);
-    }
+    return;
   }
 
   async function selectDay(dayNum: number) {
-    await flushPending();
     setSelected(dayNum);
   }
 
@@ -178,8 +158,6 @@ export default function TimesheetEditor({
 
   async function handleClear() {
     if (!confirm("Xoá toàn bộ dữ liệu của ngày này?")) return;
-    dirtyDays.current.delete(selected);
-    if (timer.current) clearTimeout(timer.current);
     setDrafts((p) => ({
       ...p,
       [selected]: { startMin: null, endMin: null, breakMin: 60, dayType: "WORK", leaveNote: null, remark: null, entries: [] },
@@ -217,6 +195,7 @@ export default function TimesheetEditor({
           workTypes={workTypes}
           readOnly={readOnly}
           onChange={handleChange}
+          onSave={handleSave}
           onClear={handleClear}
           onCopyPrev={handleCopyPrev}
           canCopyPrev={canCopyPrev}

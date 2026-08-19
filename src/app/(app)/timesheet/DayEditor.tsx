@@ -29,7 +29,7 @@ const LEAVE_PRESETS = [
 ];
 
 export default function DayEditor({
-  day, draft, projects, workTypes, readOnly, onChange, onClear, onCopyPrev, canCopyPrev,
+  day, draft, projects, workTypes, readOnly, onChange, onSave, onClear, onCopyPrev, canCopyPrev,
 }: {
   day: DayData;
   draft: DayDraft;
@@ -37,6 +37,7 @@ export default function DayEditor({
   workTypes: WorkType[];
   readOnly: boolean;
   onChange: (next: DayDraft) => void;
+  onSave: () => Promise<void> | void;
   onClear: () => void;
   onCopyPrev: () => void;
   canCopyPrev: boolean;
@@ -97,6 +98,10 @@ export default function DayEditor({
                   disabled={readOnly || !canCopyPrev}
                   title="Chép giờ và các dòng công việc từ ngày làm việc trước">
             Chép ngày trước
+          </button>
+          <button className="btn-primary btn-sm" onClick={() => { void onSave(); }}
+                  disabled={readOnly}>
+            Lưu
           </button>
           <button className="btn-ghost btn-sm text-rose-600 hover:bg-rose-50"
                   onClick={onClear} disabled={readOnly}>
