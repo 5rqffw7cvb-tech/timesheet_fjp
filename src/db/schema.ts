@@ -43,6 +43,21 @@ export const projects = pgTable(
   (t) => [index("projects_active_idx").on(t.isActive)],
 );
 
+/** Member được assign vào project nào */
+export const projectAssignments = pgTable(
+  "project_assignments",
+  {
+    id: text("id").primaryKey().$defaultFn(createId),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("project_assignments_unique").on(t.userId, t.projectId),
+    index("project_assignments_user_idx").on(t.userId),
+  ],
+);
+
 /** 工種 master */
 export const workTypes = pgTable(
   "work_types",
@@ -223,6 +238,16 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   dayLogs: many(dayLogs),
   entries: many(timeEntries),
   reports: many(monthlyReports),
+  projectAssignments: many(projectAssignments),
+}));
+
+export const projectAssignmentsRelations = relations(projectAssignments, ({ one }) => ({
+  user: one(users, { fields: [projectAssignments.userId], references: [users.id] }),
+  project: one(projects, { fields: [projectAssignments.projectId], references: [projects.id] }),
+}));
+
+export const projectsRelations = relations(projects, ({ many }) => ({
+  assignments: many(projectAssignments),
 }));
 
 export const budgetsRelations = relations(budgets, ({ one }) => ({
@@ -246,6 +271,7 @@ export const monthlyReportsRelations = relations(monthlyReports, ({ one }) => ({
 
 export type User = typeof users.$inferSelect;
 export type Project = typeof projects.$inferSelect;
+export type ProjectAssignment = typeof projectAssignments.$inferSelect;
 export type WorkType = typeof workTypes.$inferSelect;
 export type Budget = typeof budgets.$inferSelect;
 export type DayLog = typeof dayLogs.$inferSelect;

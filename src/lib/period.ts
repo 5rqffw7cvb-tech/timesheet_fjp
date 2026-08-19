@@ -2,7 +2,7 @@ import { and, asc, eq, gte, lte, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
   budgets, dayLogs, monthlyReports, projects, timeEntries, workTypes,
-  monthSettings, holidays, users,
+  monthSettings, holidays, users, projectAssignments,
 } from "@/db/schema";
 import { daysInMonth, ymd, mondayIndex, workedHours } from "./dates";
 
@@ -209,10 +209,29 @@ export function defaultWorkingDays(year: number, month: number): number {
   return n;
 }
 
-export async function loadMasters() {
+export async function loadMasters(userId?: string) {
+  const projectQuery = userId
+    ? db.select({
+        id: projects.id,
+        systemCode: projects.systemCode,
+        systemName: projects.systemName,
+        code: projects.code,
+        name: projects.name,
+        startDate: projects.startDate,
+        endDate: projects.endDate,
+        isActive: projects.isActive,
+        sortOrder: projects.sortOrder,
+        createdAt: projects.createdAt,
+      })
+        .from(projectAssignments)
+        .innerJoin(projects, eq(projects.id, projectAssignments.projectId))
+        .where(and(eq(projectAssignments.userId, userId), eq(projects.isActive, true)))
+        .orderBy(asc(projects.sortOrder), asc(projects.code))
+    : db.select().from(projects).where(eq(projects.isActive, true))
+        .orderBy(asc(projects.sortOrder), asc(projects.code));
+
   const [projectRows, workTypeRows] = await Promise.all([
-    db.select().from(projects).where(eq(projects.isActive, true))
-      .orderBy(asc(projects.sortOrder), asc(projects.code)),
+    projectQuery,
     db.select().from(workTypes).where(eq(workTypes.isActive, true))
       .orderBy(asc(workTypes.sortOrder), asc(workTypes.code)),
   ]);

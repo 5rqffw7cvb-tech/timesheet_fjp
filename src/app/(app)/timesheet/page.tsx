@@ -18,7 +18,7 @@ export default async function TimesheetPage({
 
   const [data, masters] = await Promise.all([
     loadMonth(user.id, year, month),
-    loadMasters(),
+    loadMasters(user.id),
   ]);
 
   return (

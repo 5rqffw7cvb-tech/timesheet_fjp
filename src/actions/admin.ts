@@ -1,16 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
   budgets, monthlyReports, users, projects, workTypes,
   monthSettings, holidays, orgSettings, auditLogs, companies,
+  projectAssignments,
 } from "@/db/schema";
 import { requireAdmin, hashPassword } from "@/lib/auth";
 
-export interface ActionResult { ok: boolean; error?: string; message?: string }
+export interface ActionResult { ok: boolean; error?: string; message?: string; id?: string }
 
 const fail = (error: string): ActionResult => ({ ok: false, error });
 
@@ -158,7 +159,7 @@ export async function createMemberAction(input: unknown, password: string): Prom
     .where(eq(users.username, parsed.data.username)).limit(1);
   if (dup) return fail("Tên đăng nhập đã tồn tại.");
 
-  await db.insert(users).values({
+  const [created] = await db.insert(users).values({
     ...parsed.data,
     displayName: parsed.data.displayName || null,
     employeeCode: parsed.data.employeeCode || null,
@@ -167,9 +168,9 @@ export async function createMemberAction(input: unknown, password: string): Prom
     companyId: parsed.data.companyId || null,
     passwordHash: await hashPassword(password),
     mustChangePw: true,
-  });
+  }).returning({ id: users.id });
   revalidatePath("/admin/members");
-  return { ok: true, message: "Đã tạo tài khoản." };
+  return { ok: true, id: created?.id, message: "Đã tạo tài khoản." };
 }
 
 export async function updateMemberAction(id: string, input: unknown): Promise<ActionResult> {
@@ -211,6 +212,34 @@ export async function resetPasswordAction(id: string, password: string): Promise
   await db.insert(auditLogs).values({ actorId: admin.id, action: "RESET_PASSWORD", target: id });
   revalidatePath("/admin/members");
   return { ok: true, message: "Đã đặt lại mật khẩu. Member phải đổi ở lần đăng nhập kế tiếp." };
+}
+
+export async function syncMemberProjectAssignmentsAction(
+  userId: string, projectIds: string[],
+): Promise<ActionResult> {
+  await requireAdmin();
+  const uniqueIds = [...new Set(projectIds.filter(Boolean))];
+
+  const existing = await db.select({ projectId: projectAssignments.projectId })
+    .from(projectAssignments)
+    .where(eq(projectAssignments.userId, userId));
+  const existingSet = new Set(existing.map((r) => r.projectId));
+  const addIds = uniqueIds.filter((id) => !existingSet.has(id));
+  const removeIds = [...existingSet].filter((id) => !uniqueIds.includes(id));
+
+  if (addIds.length) {
+    await db.insert(projectAssignments).values(addIds.map((projectId) => ({ userId, projectId })));
+  }
+  if (removeIds.length) {
+    await db.delete(projectAssignments).where(and(
+      eq(projectAssignments.userId, userId),
+      inArray(projectAssignments.projectId, removeIds),
+    ));
+  }
+
+  revalidatePath("/admin/members");
+  revalidatePath("/timesheet");
+  return { ok: true, message: "Đã đồng bộ project của member." };
 }
 
 /* ─────────────────────────── Master ─────────────────────────── */
