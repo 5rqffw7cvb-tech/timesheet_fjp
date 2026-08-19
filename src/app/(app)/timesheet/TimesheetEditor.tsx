@@ -96,6 +96,16 @@ export default function TimesheetEditor({
     }
   }, [data.year, data.month]);
 
+  const hasMeaningfulEntry = useCallback((entry: DraftEntry) => {
+    return !!entry.projectId && !!entry.workTypeId && Number(entry.hours) > 0;
+  }, []);
+
+  const canPersistDraft = useCallback((draft: DayDraft) => {
+    if (draft.entries.some(hasMeaningfulEntry)) return true;
+    return !!draft.startMin || !!draft.endMin || draft.dayType !== "WORK"
+      || !!draft.leaveNote || !!draft.remark;
+  }, [hasMeaningfulEntry]);
+
   const scheduleSave = useCallback((dayNum: number, draft: DayDraft) => {
     dirtyDays.current.add(dayNum);
     if (timer.current) clearTimeout(timer.current);
@@ -104,7 +114,7 @@ export default function TimesheetEditor({
 
   function handleChange(next: DayDraft) {
     setDrafts((prev) => ({ ...prev, [selected]: next }));
-    if (!readOnly) scheduleSave(selected, next);
+    if (!readOnly && canPersistDraft(next)) scheduleSave(selected, next);
   }
 
   async function flushPending() {

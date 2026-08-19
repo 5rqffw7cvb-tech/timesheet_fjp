@@ -62,11 +62,13 @@ export default function DayEditor({
   }
   function addEntry() {
     const last = draft.entries[draft.entries.length - 1];
+    const defaultProjectId = last?.projectId || projects[0]?.id || "";
+    const defaultWorkTypeId = last?.workTypeId || workTypes[0]?.id || "";
     patch({
       entries: [...draft.entries, {
         key: Math.random().toString(36).slice(2),
-        projectId: last?.projectId ?? projects[0]?.id ?? "",
-        workTypeId: last?.workTypeId ?? workTypes[0]?.id ?? "",
+        projectId: defaultProjectId,
+        workTypeId: defaultWorkTypeId,
         description: "",
         hours: 0,
         isPlan: false,
