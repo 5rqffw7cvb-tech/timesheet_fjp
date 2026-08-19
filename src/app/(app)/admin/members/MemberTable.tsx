@@ -4,7 +4,6 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   createMemberAction, updateMemberAction, toggleMemberAction, resetPasswordAction,
-  syncMemberProjectAssignmentsAction,
 } from "@/actions/admin";
 
 interface Member {
@@ -19,12 +18,10 @@ const EMPTY: Omit<Member, "id" | "isActive" | "mustChangePw"> = {
 };
 
 export default function MemberTable({
-  members, companies, projects, assignedProjectIdsByUser,
+  members, companies,
 }: {
   members: Member[];
   companies: { id: string; name: string }[];
-  projects: { id: string; code: string; name: string }[];
-  assignedProjectIdsByUser: Record<string, string[]>;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<Member | "new" | null>(null);
@@ -66,8 +63,6 @@ export default function MemberTable({
         <MemberForm
           member={editing === "new" ? null : editing}
           companies={companies}
-          projects={projects}
-          assignedProjectIds={editing === "new" ? [] : (assignedProjectIdsByUser[editing.id] ?? [])}
           onClose={() => setEditing(null)}
           onSaved={(m) => { setMsg(m); setEditing(null); router.refresh(); }}
         />
@@ -118,12 +113,10 @@ export default function MemberTable({
 }
 
 function MemberForm({
-  member, companies, projects, assignedProjectIds, onClose, onSaved,
+  member, companies, onClose, onSaved,
 }: {
   member: Member | null;
   companies: { id: string; name: string }[];
-  projects: { id: string; code: string; name: string }[];
-  assignedProjectIds: string[];
   onClose: () => void;
   onSaved: (msg: string) => void;
 }) {
@@ -136,7 +129,6 @@ function MemberForm({
     location: member?.location ?? "日本",
     role: member?.role ?? ("MEMBER" as "ADMIN" | "MEMBER"),
     companyId: member?.companyId ?? companies[0]?.id ?? "",
-    assignedProjectIds: assignedProjectIds,
   });
   const [password, setPassword] = useState("Fpt@123456");
   const [error, setError] = useState<string | null>(null);
@@ -146,26 +138,11 @@ function MemberForm({
 
   function save() {
     startTransition(async () => {
-      const payload = { ...form, assignedProjectIds: undefined };
       const res = member
-        ? await updateMemberAction(member.id, payload)
-        : await createMemberAction(payload, password);
-
-      if (!res.ok) {
-        setError(res.error ?? "Lỗi");
-        return;
-      }
-
-      const targetId = member?.id ?? res.id;
-      if (targetId) {
-        const sync = await syncMemberProjectAssignmentsAction(targetId, form.assignedProjectIds);
-        if (!sync.ok) {
-          setError(sync.error ?? "Lỗi cập nhật project assign");
-          return;
-        }
-      }
-
-      onSaved(member ? "Đã lưu." : `Đã tạo ${form.username} — mật khẩu: ${password}`);
+        ? await updateMemberAction(member.id, form)
+        : await createMemberAction(form, password);
+      if (res.ok) onSaved(member ? "Đã lưu." : `Đã tạo ${form.username} — mật khẩu: ${password}`);
+      else setError(res.error ?? "Lỗi");
     });
   }
 
@@ -216,28 +193,6 @@ function MemberForm({
             <input className="input num" value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
         )}
-        <div className="sm:col-span-2 lg:col-span-4">
-          <label className="label">Project được assign</label>
-          <div className="grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-3">
-            {projects.length === 0 ? (
-              <span className="text-sm text-slate-500">Chưa có project đang hoạt động.</span>
-            ) : projects.map((p) => (
-              <label key={p.id} className="flex items-center gap-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={form.assignedProjectIds.includes(p.id)}
-                  onChange={(e) => {
-                    const next = e.target.checked
-                      ? [...form.assignedProjectIds, p.id]
-                      : form.assignedProjectIds.filter((id) => id !== p.id);
-                    setForm((s) => ({ ...s, assignedProjectIds: [...new Set(next)] }));
-                  }}
-                />
-                <span className="num">{p.code}</span> — {p.name}
-              </label>
-            ))}
-          </div>
-        </div>
       </div>
       {error && <p className="px-4 pb-2 text-sm text-rose-600">{error}</p>}
       <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">

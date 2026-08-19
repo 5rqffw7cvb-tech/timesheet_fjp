@@ -35,6 +35,9 @@ export async function setBudgetAction(
         target: [budgets.userId, budgets.projectId, budgets.year, budgets.month],
         set: { hours: hours.toFixed(2), updatedAt: new Date() },
       });
+    await db.insert(projectAssignments)
+      .values({ userId, projectId })
+      .onConflictDoNothing({ target: [projectAssignments.userId, projectAssignments.projectId] });
   }
   revalidatePath("/admin/budgets");
   revalidatePath("/admin");

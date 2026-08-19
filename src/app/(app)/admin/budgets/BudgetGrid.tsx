@@ -72,6 +72,9 @@ export default function BudgetGrid({
         <MonthNav year={year} month={month} />
         <span className="text-sm text-slate-500">Budget giờ theo thành viên × project</span>
         <div className="ml-auto flex items-center gap-2">
+          <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+            Nếu nhập &gt; 0 thì project này sẽ được assign cho member
+          </span>
           {msg && <span className="text-xs text-slate-500">{msg}</span>}
           <select className="select w-56" value="" onChange={(e) => {
             if (e.target.value) setExtra((s) => [...s, e.target.value]);
