@@ -1,0 +1,457 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import type { Project, WorkType } from "@/db/schema";
+import type { MonthData, DayData } from "@/lib/period";
+import { WEEKDAY_VI, todayParts, ymd } from "@/lib/dates";
+import {
+  saveDayAction, copyDayAction, clearDayAction,
+  submitMonthAction, withdrawMonthAction, fillWorkdaysAction,
+} from "@/actions/timesheet";
+import DayEditor, { type DayDraft, type DraftEntry } from "./DayEditor";
+import BudgetBar from "@/components/BudgetBar";
+import StatusBadge from "@/components/StatusBadge";
+import MonthNav from "@/components/MonthNav";
+
+function toDraft(day: DayData): DayDraft {
+  return {
+    startMin: day.startMin,
+    endMin: day.endMin,
+    breakMin: day.breakMin,
+    dayType: day.dayType,
+    leaveNote: day.leaveNote,
+    remark: day.remark,
+    entries: day.entries.map<DraftEntry>((e) => ({
+      key: e.id,
+      projectId: e.projectId,
+      workTypeId: e.workTypeId,
+      description: e.description,
+      hours: e.hours,
+      isPlan: e.isPlan,
+    })),
+  };
+}
+
+export default function TimesheetEditor({
+  data, projects, workTypes,
+}: {
+  data: MonthData;
+  projects: Project[];
+  workTypes: WorkType[];
+}) {
+  const readOnly = data.locked;
+  const today = todayParts();
+
+  const initialDay = useMemo(() => {
+    if (today.year === data.year && today.month === data.month) return today.day;
+    const firstWithout = data.days.find((d) => !d.isWeekend && d.entries.length === 0);
+    return firstWithout?.day ?? 1;
+  }, [data.year, data.month, data.days, today.year, today.month, today.day]);
+
+  const [selected, setSelected] = useState(initialDay);
+  const [drafts, setDrafts] = useState<Record<number, DayDraft>>(() =>
+    Object.fromEntries(data.days.map((d) => [d.day, toDraft(d)])),
+  );
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirtyDays = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    setDrafts(Object.fromEntries(data.days.map((d) => [d.day, toDraft(d)])));
+    dirtyDays.current.clear();
+  }, [data.days]);
+
+  const persist = useCallback(async (dayNum: number, draft: DayDraft) => {
+    setSaveState("saving");
+    const res = await saveDayAction({
+      day: {
+        date: ymd(data.year, data.month, dayNum),
+        startMin: draft.startMin,
+        endMin: draft.endMin,
+        breakMin: draft.breakMin,
+        dayType: draft.dayType,
+        leaveNote: draft.leaveNote,
+        remark: draft.remark,
+      },
+      entries: draft.entries
+        .filter((e) => e.projectId && e.workTypeId)
+        .map((e) => ({
+          projectId: e.projectId,
+          workTypeId: e.workTypeId,
+          description: e.description,
+          hours: e.hours,
+          isPlan: e.isPlan,
+        })),
+    });
+    if (res.ok) {
+      dirtyDays.current.delete(dayNum);
+      setSaveState("saved");
+      setErrorMsg(null);
+      setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1600);
+    } else {
+      setSaveState("error");
+      setErrorMsg(res.error ?? "Lưu không thành công");
+    }
+  }, [data.year, data.month]);
+
+  const scheduleSave = useCallback((dayNum: number, draft: DayDraft) => {
+    dirtyDays.current.add(dayNum);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => { void persist(dayNum, draft); }, 700);
+  }, [persist]);
+
+  function handleChange(next: DayDraft) {
+    setDrafts((prev) => ({ ...prev, [selected]: next }));
+    if (!readOnly) scheduleSave(selected, next);
+  }
+
+  async function flushPending() {
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+    for (const d of [...dirtyDays.current]) {
+      await persist(d, drafts[d]);
+    }
+  }
+
+  async function selectDay(dayNum: number) {
+    await flushPending();
+    setSelected(dayNum);
+  }
+
+  const dayData = data.days.find((d) => d.day === selected)!;
+  const draft = drafts[selected] ?? toDraft(dayData);
+
+  const liveTotals = useMemo(() => {
+    const byProject = new Map<string, number>();
+    let total = 0;
+    for (const [, d] of Object.entries(drafts)) {
+      for (const e of d.entries) {
+        if (e.isPlan) continue;
+        total += e.hours;
+        byProject.set(e.projectId, (byProject.get(e.projectId) ?? 0) + e.hours);
+      }
+    }
+    return { total: Math.round(total * 100) / 100, byProject };
+  }, [drafts]);
+
+  const budgetRows = useMemo(() => {
+    const rows = data.budgets.map((b) => ({
+      ...b, usedHours: Math.round((liveTotals.byProject.get(b.projectId) ?? 0) * 100) / 100,
+    }));
+    for (const [pid, used] of liveTotals.byProject) {
+      if (!rows.some((r) => r.projectId === pid)) {
+        const p = projects.find((x) => x.id === pid);
+        rows.push({
+          projectId: pid,
+          projectCode: p?.code ?? "?",
+          projectName: p?.name ?? "(không rõ)",
+          budgetHours: 0,
+          usedHours: Math.round(used * 100) / 100,
+        });
+      }
+    }
+    return rows;
+  }, [data.budgets, liveTotals, projects]);
+
+  async function handleCopyPrev() {
+    const prev = [...data.days].reverse().find(
+      (d) => d.day < selected && (d.entries.length > 0 || d.startMin != null),
+    );
+    if (!prev) return;
+    await flushPending();
+    startTransition(async () => {
+      const res = await copyDayAction(prev.date, ymd(data.year, data.month, selected));
+      if (!res.ok) { setSaveState("error"); setErrorMsg(res.error ?? null); }
+    });
+  }
+
+  async function handleClear() {
+    if (!confirm("Xoá toàn bộ dữ liệu của ngày này?")) return;
+    dirtyDays.current.delete(selected);
+    if (timer.current) clearTimeout(timer.current);
+    setDrafts((p) => ({
+      ...p,
+      [selected]: { startMin: null, endMin: null, breakMin: 60, dayType: "WORK", leaveNote: null, remark: null, entries: [] },
+    }));
+    startTransition(async () => {
+      await clearDayAction(ymd(data.year, data.month, selected));
+    });
+  }
+
+  const canCopyPrev = data.days.some(
+    (d) => d.day < selected && (d.entries.length > 0 || d.startMin != null),
+  );
+
+  return (
+    <div className="space-y-4">
+      <Toolbar
+        data={data}
+        liveTotal={liveTotals.total}
+        saveState={saveState}
+        errorMsg={errorMsg}
+        onBeforeAction={flushPending}
+      />
+
+      <div className="grid gap-4 lg:grid-cols-[290px_minmax(0,1fr)]">
+        <DayList
+          data={data}
+          drafts={drafts}
+          selected={selected}
+          onSelect={selectDay}
+        />
+        <DayEditor
+          day={dayData}
+          draft={draft}
+          projects={projects}
+          workTypes={workTypes}
+          readOnly={readOnly}
+          onChange={handleChange}
+          onClear={handleClear}
+          onCopyPrev={handleCopyPrev}
+          canCopyPrev={canCopyPrev}
+        />
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <h2 className="card-title">Budget theo project — {data.year}年{String(data.month).padStart(2, "0")}月</h2>
+          <span className="text-xs text-slate-500 num">
+            Tổng {liveTotals.total.toFixed(1)}h / {data.totalBudget.toFixed(1)}h
+          </span>
+        </div>
+        <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
+          {budgetRows.length === 0 && (
+            <p className="text-sm text-slate-400">
+              Quản trị viên chưa set budget cho tháng này.
+            </p>
+          )}
+          {budgetRows.map((b) => (
+            <div key={b.projectId} className="rounded-md border border-slate-200 p-3">
+              <div className="mb-2 flex items-baseline justify-between gap-2">
+                <span className="truncate text-sm font-medium text-slate-700" title={b.projectName}>
+                  {b.projectName}
+                </span>
+                <span className="shrink-0 text-xs text-slate-400 num">{b.projectCode}</span>
+              </div>
+              <BudgetBar used={b.usedHours} budget={b.budgetHours} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────── Toolbar ─────────────────────────── */
+
+function Toolbar({
+  data, liveTotal, saveState, errorMsg, onBeforeAction,
+}: {
+  data: MonthData;
+  liveTotal: number;
+  saveState: string;
+  errorMsg: string | null;
+  onBeforeAction: () => Promise<void>;
+}) {
+  const [note, setNote] = useState(data.report.memberNote ?? "");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [showFill, setShowFill] = useState(false);
+
+  async function submit() {
+    if (!confirm("Nộp timesheet tháng này cho quản lý? Sau khi nộp bạn sẽ không sửa được cho tới khi thu hồi.")) return;
+    setBusy(true);
+    await onBeforeAction();
+    const res = await submitMonthAction(data.year, data.month, note);
+    setBusy(false);
+    setMsg(res.ok ? "Đã nộp." : res.error ?? "Lỗi");
+  }
+
+  async function withdraw() {
+    setBusy(true);
+    const res = await withdrawMonthAction(data.year, data.month);
+    setBusy(false);
+    setMsg(res.ok ? "Đã thu hồi, bạn có thể sửa tiếp." : res.error ?? "Lỗi");
+  }
+
+  const overBudget = data.totalBudget > 0 && liveTotal > data.totalBudget;
+
+  return (
+    <div className="card">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+        <MonthNav year={data.year} month={data.month} />
+
+        <div className="flex items-baseline gap-1.5 rounded-md bg-slate-50 px-3 py-1.5">
+          <span className="text-xs text-slate-500">Tổng giờ</span>
+          <span className={`text-base font-semibold num ${overBudget ? "text-rose-600" : "text-slate-800"}`}>
+            {liveTotal.toFixed(1)}
+          </span>
+          <span className="text-xs text-slate-400 num">
+            / {data.totalBudget > 0 ? `${data.totalBudget.toFixed(1)}h` : "chưa set budget"}
+          </span>
+        </div>
+
+        <div className="flex items-baseline gap-1.5 rounded-md bg-slate-50 px-3 py-1.5">
+          <span className="text-xs text-slate-500">所定日数</span>
+          <span className="text-sm font-semibold text-slate-700 num">{data.workingDays}</span>
+        </div>
+
+        <StatusBadge status={data.report.status} />
+
+        <div className="ml-auto flex items-center gap-2">
+          <span className={`text-xs ${
+            saveState === "error" ? "text-rose-600"
+            : saveState === "saving" ? "text-slate-400" : "text-emerald-600"}`}>
+            {saveState === "saving" ? "Đang lưu…"
+              : saveState === "saved" ? "Đã lưu"
+              : saveState === "error" ? (errorMsg ?? "Lỗi lưu") : ""}
+          </span>
+
+          {!data.locked && (
+            <button className="btn-secondary btn-sm" onClick={() => setShowFill((v) => !v)}>
+              Điền nhanh cả tháng
+            </button>
+          )}
+
+          {data.report.status === "SUBMITTED" && (
+            <button className="btn-secondary" onClick={withdraw} disabled={busy}>
+              Thu hồi
+            </button>
+          )}
+          {(data.report.status === "DRAFT" || data.report.status === "REJECTED") && (
+            <button className="btn-primary" onClick={submit} disabled={busy}>
+              {busy ? "Đang gửi…" : "Nộp tháng này"}
+            </button>
+          )}
+          {data.report.status === "APPROVED" && (
+            <span className="text-xs text-emerald-600">Đã chốt sổ</span>
+          )}
+        </div>
+      </div>
+
+      {showFill && !data.locked && <FillPanel data={data} onDone={() => setShowFill(false)} />}
+
+      {(data.report.status === "DRAFT" || data.report.status === "REJECTED") && (
+        <div className="border-t border-slate-200 px-4 py-2">
+          <input className="input" placeholder="Ghi chú gửi kèm cho quản lý (không bắt buộc)"
+                 value={note} onChange={(e) => setNote(e.target.value)} />
+        </div>
+      )}
+
+      {data.report.status === "REJECTED" && data.report.reviewNote && (
+        <div className="border-t border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
+          <strong>Quản lý trả lại:</strong> {data.report.reviewNote}
+        </div>
+      )}
+      {msg && <div className="border-t border-slate-200 px-4 py-2 text-sm text-slate-600">{msg}</div>}
+    </div>
+  );
+}
+
+function FillPanel({ data, onDone }: { data: MonthData; onDone: () => void }) {
+  const [start, setStart] = useState("09:00");
+  const [end, setEnd] = useState("18:00");
+  const [brk, setBrk] = useState(60);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true);
+    const toMin = (s: string) => {
+      const [h, m] = s.split(":").map(Number);
+      return h * 60 + m;
+    };
+    const res = await fillWorkdaysAction(data.year, data.month, toMin(start), toMin(end), brk);
+    setBusy(false);
+    setMsg(res.ok ? `Đã điền ${res.filled ?? 0} ngày còn trống.` : res.error ?? "Lỗi");
+    if (res.ok) setTimeout(onDone, 1200);
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3">
+      <div>
+        <label className="label">始業</label>
+        <input type="time" className="input num w-28" value={start} onChange={(e) => setStart(e.target.value)} />
+      </div>
+      <div>
+        <label className="label">終業</label>
+        <input type="time" className="input num w-28" value={end} onChange={(e) => setEnd(e.target.value)} />
+      </div>
+      <div>
+        <label className="label">休憩 (phút)</label>
+        <input type="number" className="input num w-24" value={brk}
+               onChange={(e) => setBrk(Number(e.target.value) || 0)} />
+      </div>
+      <button className="btn-primary" onClick={run} disabled={busy}>
+        {busy ? "Đang điền…" : "Điền cho ngày T2–T6 còn trống"}
+      </button>
+      {msg && <span className="text-sm text-slate-600">{msg}</span>}
+      <p className="w-full text-xs text-slate-500">
+        Chỉ điền giờ vào/ra cho những ngày chưa có dữ liệu. Không tạo dòng công việc, không ghi đè ngày đã nhập.
+      </p>
+    </div>
+  );
+}
+
+/* ─────────────────────────── Danh sách ngày ─────────────────────────── */
+
+function DayList({
+  data, drafts, selected, onSelect,
+}: {
+  data: MonthData;
+  drafts: Record<number, DayDraft>;
+  selected: number;
+  onSelect: (d: number) => void;
+}) {
+  const today = todayParts();
+  const isCurrentMonth = today.year === data.year && today.month === data.month;
+
+  return (
+    <div className="card overflow-hidden">
+      <div className="card-header">
+        <h2 className="card-title">Ngày trong tháng</h2>
+        <span className="text-xs text-slate-400">giờ đã nhập</span>
+      </div>
+      <div className="max-h-[600px] overflow-y-auto">
+        {data.days.map((d) => {
+          const draft = drafts[d.day];
+          const hours = draft
+            ? draft.entries.reduce((s, e) => s + (e.isPlan ? 0 : e.hours), 0)
+            : d.entryHours;
+          const on = d.day === selected;
+          const isToday = isCurrentMonth && d.day === today.day;
+          const off = d.isWeekend || d.isHoliday || draft?.dayType === "PUBLIC_OFF";
+
+          return (
+            <button
+              key={d.day}
+              onClick={() => onSelect(d.day)}
+              className={`flex w-full items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-left text-sm transition
+                ${on ? "bg-brand-50 ring-1 ring-inset ring-brand-200" : "hover:bg-slate-50"}
+                ${off && !on ? "bg-slate-50/60" : ""}`}
+            >
+              <span className={`w-7 shrink-0 text-right font-semibold num ${
+                off ? "text-rose-400" : "text-slate-600"}`}>
+                {String(d.day).padStart(2, "0")}
+              </span>
+              <span className={`w-6 shrink-0 text-xs ${off ? "text-rose-400" : "text-slate-400"}`}>
+                {WEEKDAY_VI[d.weekday]}
+              </span>
+              {isToday && <span className="badge bg-brand-600 px-1.5 py-0 text-[10px] text-white">nay</span>}
+              <span className="ml-auto flex items-center gap-2">
+                {draft?.leaveNote && (
+                  <span className="max-w-[70px] truncate text-[11px] text-amber-600">{draft.leaveNote}</span>
+                )}
+                <span className={`w-12 text-right num ${
+                  hours > 0 ? "font-medium text-slate-700" : "text-slate-300"}`}>
+                  {hours > 0 ? hours.toFixed(1) : "–"}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
