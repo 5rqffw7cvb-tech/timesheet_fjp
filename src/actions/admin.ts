@@ -11,6 +11,7 @@ import {
 } from "@/db/schema";
 import { requireAdmin, hashPassword } from "@/lib/auth";
 import { ymd } from "@/lib/dates";
+import { normalizeBillingCurrency } from "@/lib/currency";
 
 export interface ActionResult { ok: boolean; error?: string; message?: string; id?: string }
 
@@ -368,11 +369,19 @@ export async function removeHolidayAction(id: string): Promise<ActionResult> {
 }
 
 export async function updateOrgSettingAction(data: {
-  clientCompany: string; orgUnit: string; workplace: string; workName: string;
+  clientCompany: string;
+  orgUnit: string;
+  workplace: string;
+  workName: string;
+  billingCurrency: string;
 }): Promise<ActionResult> {
   await requireAdmin();
-  await db.insert(orgSettings).values({ id: "default", ...data })
-    .onConflictDoUpdate({ target: orgSettings.id, set: { ...data, updatedAt: new Date() } });
+  const payload = {
+    ...data,
+    billingCurrency: normalizeBillingCurrency(data.billingCurrency),
+  };
+  await db.insert(orgSettings).values({ id: "default", ...payload })
+    .onConflictDoUpdate({ target: orgSettings.id, set: { ...payload, updatedAt: new Date() } });
   revalidatePath("/admin/settings");
   return { ok: true, message: "Đã lưu." };
 }

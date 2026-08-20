@@ -3,8 +3,9 @@ import { monthOverviewForPeriods, monthWorkingDays } from "@/lib/adminData";
 import { todayParts } from "@/lib/dates";
 import ExportPanel from "./ExportPanel";
 import { db } from "@/db";
-import { projects } from "@/db/schema";
+import { orgSettings, projects } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
+import { normalizeBillingCurrency } from "@/lib/currency";
 
 export const dynamic = "force-dynamic";
 
@@ -29,14 +30,16 @@ export default async function ExportPage({
     .map((s) => s.trim())
     .filter(Boolean);
 
-  const [rows, workingDays, projectRows] = await Promise.all([
+  const [rows, workingDays, projectRows, orgRows] = await Promise.all([
     monthOverviewForPeriods(selectedPeriods, selectedProjectIds, "all"),
     monthWorkingDays(year, month),
     db.select({ id: projects.id, code: projects.code, name: projects.name })
       .from(projects)
       .where(eq(projects.isActive, true))
       .orderBy(asc(projects.sortOrder), asc(projects.code)),
+    db.select().from(orgSettings).limit(1),
   ]);
+  const billingCurrency = normalizeBillingCurrency(orgRows[0]?.billingCurrency);
 
   return (
     <ExportPanel
@@ -47,6 +50,7 @@ export default async function ExportPage({
       selectedPeriods={selectedPeriods.map((p) => `${p.year}-${String(p.month).padStart(2, "0")}`)}
       selectedProjectIds={selectedProjectIds}
       projects={projectRows}
+      billingCurrency={billingCurrency}
     />
   );
 }

@@ -4,8 +4,9 @@ import { loadMasters } from "@/lib/period";
 import { todayParts, ymd, daysInMonth } from "@/lib/dates";
 import BudgetGrid from "./BudgetGrid";
 import { db } from "@/db";
-import { projectRates } from "@/db/schema";
+import { orgSettings, projectRates } from "@/db/schema";
 import { lte } from "drizzle-orm";
+import { normalizeBillingCurrency } from "@/lib/currency";
 
 const HOURS_PER_CONG = 180;
 
@@ -20,7 +21,7 @@ export default async function BudgetsPage({
   const year = Number(sp.year) || now.year;
   const month = Number(sp.month) || now.month;
 
-  const [rows, masters, rateRows] = await Promise.all([
+  const [rows, masters, rateRows, orgRows] = await Promise.all([
     monthOverview(year, month),
     loadMasters(),
     db.select({
@@ -30,7 +31,9 @@ export default async function BudgetsPage({
       unitPriceMm: projectRates.unitPriceMm,
     }).from(projectRates)
       .where(lte(projectRates.effectiveFrom, ymd(year, month, daysInMonth(year, month)))),
+    db.select().from(orgSettings).limit(1),
   ]);
+  const billingCurrency = normalizeBillingCurrency(orgRows[0]?.billingCurrency);
 
   const initial: Record<string, number> = {};
   const initialRates: Record<string, number> = {};
@@ -66,6 +69,7 @@ export default async function BudgetsPage({
       projects={masters.projects.map((p) => ({ id: p.id, code: p.code, name: p.name }))}
       initial={initial}
       initialRates={initialRates}
+      billingCurrency={billingCurrency}
     />
   );
 }

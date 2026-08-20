@@ -236,6 +236,7 @@ export const orgSettings = pgTable("org_settings", {
   orgUnit: text("org_unit").notNull().default("SI　開発部"),
   workplace: text("workplace").notNull().default("〒105-0011東京都港区芝公園1丁目7-6"),
   workName: text("work_name").notNull().default("YOKO Portal 開発"),
+  billingCurrency: text("billing_currency").notNull().default("JPY"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -6,9 +6,10 @@ import MonthNav from "@/components/MonthNav";
 import StatusBadge from "@/components/StatusBadge";
 import type { OverviewRow } from "@/lib/adminData";
 import { calcBillingByProjects } from "@/lib/billing";
+import { currencySymbol, type BillingCurrency } from "@/lib/currency";
 
 export default function ExportPanel({
-  year, month, rows, workingDays, selectedPeriods, selectedProjectIds, projects,
+  year, month, rows, workingDays, selectedPeriods, selectedProjectIds, projects, billingCurrency,
 }: {
   year: number;
   month: number;
@@ -17,7 +18,9 @@ export default function ExportPanel({
   selectedPeriods: string[];
   selectedProjectIds: string[];
   projects: { id: string; code: string; name: string }[];
+  billingCurrency: BillingCurrency;
 }) {
+  const moneyUnit = currencySymbol(billingCurrency);
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -234,20 +237,20 @@ export default function ExportPanel({
         <Metric label="Member có dữ liệu" value={String(withData.length)} />
         <Metric label="Dưới ngưỡng 140h*công số" value={String(totals.under)} tone={totals.under ? "warn" : "ok"} />
         <Metric label="Vượt ngưỡng 180h*công số" value={String(totals.over)} tone={totals.over ? "warn" : "ok"} />
-        <Metric label="Tổng tiền điều chỉnh" value={totals.amount.toLocaleString("en-US")} />
+        <Metric label={`Tổng tiền điều chỉnh (${moneyUnit})`} value={totals.amount.toLocaleString("en-US")} />
       </div>
 
       <div className="card overflow-hidden">
         <div className="card-header">
           <h2 className="card-title">Dashboard điều chỉnh theo rule 140/180</h2>
-          <span className="text-xs text-slate-400">adjustment = (max(0, hours-180*f) - max(0, 140*f-hours)) / 180 * đơn giá</span>
+          <span className="text-xs text-slate-400">adjustment = (max(0, hours-180*f) - max(0, 140*f-hours)) / 180 * đơn giá ({moneyUnit}/MM)</span>
         </div>
         <table className="data">
           <thead>
             <tr>
               <th>Member</th><th className="text-right">Giờ</th><th className="text-right">Công số</th>
               <th className="text-right">Lower</th><th className="text-right">Upper</th><th className="text-right">Giờ thiếu</th>
-              <th className="text-right">Giờ vượt</th><th className="text-right">Đơn giá TB</th><th className="text-right">Điều chỉnh</th>
+              <th className="text-right">Giờ vượt</th><th className="text-right">Đơn giá TB ({moneyUnit})</th><th className="text-right">Điều chỉnh ({moneyUnit})</th>
             </tr>
           </thead>
           <tbody>

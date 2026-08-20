@@ -6,13 +6,20 @@ import MonthNav from "@/components/MonthNav";
 import {
   setMonthSettingAction, addHolidayAction, removeHolidayAction, updateOrgSettingAction,
 } from "@/actions/admin";
+import { BILLING_CURRENCIES, currencySymbol, type BillingCurrency } from "@/lib/currency";
 
 export default function SettingsPanel({
   year, month, workingDays, suggestedWorkingDays, daysInMonth, org, holidays,
 }: {
   year: number; month: number;
   workingDays: number; suggestedWorkingDays: number; daysInMonth: number;
-  org: { clientCompany: string; orgUnit: string; workplace: string; workName: string };
+  org: {
+    clientCompany: string;
+    orgUnit: string;
+    workplace: string;
+    workName: string;
+    billingCurrency: BillingCurrency;
+  };
   holidays: { id: string; date: string; name: string }[];
 }) {
   const router = useRouter();
@@ -87,6 +94,17 @@ export default function SettingsPanel({
               onChange={(e) => setOrgForm({ ...orgForm, workplace: e.target.value })} /></F>
             <F l="就業した業務"><input className="input" value={orgForm.workName}
               onChange={(e) => setOrgForm({ ...orgForm, workName: e.target.value })} /></F>
+            <F l="Đơn vị tiền tệ cho đơn giá">
+              <select
+                className="select"
+                value={orgForm.billingCurrency}
+                onChange={(e) => setOrgForm({ ...orgForm, billingCurrency: e.target.value as BillingCurrency })}
+              >
+                {BILLING_CURRENCIES.map((c) => (
+                  <option key={c} value={c}>{c} ({currencySymbol(c)})</option>
+                ))}
+              </select>
+            </F>
             <div className="flex justify-end">
               <button className="btn-primary" disabled={busy}
                       onClick={() => run(() => updateOrgSettingAction(orgForm))}>Lưu</button>

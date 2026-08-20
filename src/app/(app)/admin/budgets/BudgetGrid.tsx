@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import MonthNav from "@/components/MonthNav";
 import { setBudgetAction, copyBudgetsAction } from "@/actions/admin";
 import { shiftMonth } from "@/lib/dates";
+import { currencySymbol, type BillingCurrency } from "@/lib/currency";
 
 const HOURS_PER_CONG = 180;
 
@@ -15,14 +16,16 @@ interface Member {
 }
 
 export default function BudgetGrid({
-  year, month, members, projects, initial, initialRates,
+  year, month, members, projects, initial, initialRates, billingCurrency,
 }: {
   year: number; month: number;
   members: Member[];
   projects: { id: string; code: string; name: string }[];
   initial: Record<string, number>;
   initialRates: Record<string, number>;
+  billingCurrency: BillingCurrency;
 }) {
+  const moneyUnit = currencySymbol(billingCurrency);
   const [values, setValues] = useState<Record<string, number>>(initial);
   const [rates, setRates] = useState<Record<string, number>>(initialRates);
   const [dirty, setDirty] = useState<Set<string>>(new Set());
@@ -82,7 +85,7 @@ export default function BudgetGrid({
     <div className="space-y-4">
       <div className="card flex flex-wrap items-center gap-3 px-4 py-3">
         <MonthNav year={year} month={month} />
-        <span className="text-sm text-slate-500">Budget công + đơn giá theo thành viên × project (1.0 = 180h)</span>
+        <span className="text-sm text-slate-500">Budget công + đơn giá theo thành viên × project (1.0 = 180h, đơn giá {moneyUnit}/MM)</span>
         <div className="ml-auto flex items-center gap-2">
           <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
             Nếu nhập &gt; 0 thì project này sẽ được assign cho member
@@ -155,7 +158,7 @@ export default function BudgetGrid({
                             type="number" min={0} step={1000}
                             className={`input num w-24 text-right ${dirty.has(key) ? "border-brand-400 bg-brand-50" : ""}`}
                             value={rate === 0 ? "" : rate}
-                            placeholder="đơn giá"
+                            placeholder={`đơn giá ${moneyUnit}`}
                             onChange={(e) => setRate(m.userId, p.id, Number(e.target.value) || 0)}
                           />
                         </div>

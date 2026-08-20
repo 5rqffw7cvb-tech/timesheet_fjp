@@ -5,6 +5,7 @@ import { holidays, monthSettings, orgSettings } from "@/db/schema";
 import { todayParts, ymd, daysInMonth } from "@/lib/dates";
 import { defaultWorkingDays } from "@/lib/period";
 import SettingsPanel from "./SettingsPanel";
+import { normalizeBillingCurrency } from "@/lib/currency";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,7 @@ export default async function SettingsPage({
     orgUnit: "SI　開発部",
     workplace: "〒105-0011東京都港区芝公園1丁目7-6",
     workName: "YOKO Portal 開発",
+    billingCurrency: "JPY",
   };
 
   return (
@@ -45,6 +47,7 @@ export default async function SettingsPage({
       org={{
         clientCompany: org.clientCompany, orgUnit: org.orgUnit,
         workplace: org.workplace, workName: org.workName,
+        billingCurrency: normalizeBillingCurrency(org.billingCurrency),
       }}
       holidays={holidayRows.map((h) => ({ id: h.id, date: h.date, name: h.name }))}
     />

@@ -177,7 +177,7 @@ function MemberForm({
         <Field label="Vai trò (Front SE / BA / PM…)">
           <input className="input" value={form.roleTitle} onChange={(e) => set("roleTitle", e.target.value)} />
         </Field>
-        <Field label="Đơn giá (VND / MM)">
+        <Field label="Đơn giá mặc định (/MM)">
           <input
             className="input num"
             type="number"

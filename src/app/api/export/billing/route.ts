@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { monthOverviewForPeriods } from "@/lib/adminData";
 import { buildBillingWorkbookWithLabel, billingFileName } from "@/lib/excel/billingReport";
+import { db } from "@/db";
+import { orgSettings } from "@/db/schema";
+import { normalizeBillingCurrency } from "@/lib/currency";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +65,9 @@ export async function GET(req: Request) {
       ? `${first.year}年${String(first.month).padStart(2, "0")}月`
       : `${first.year}年${String(first.month).padStart(2, "0")}月_${last.year}年${String(last.month).padStart(2, "0")}月`;
 
-    const buffer = buildBillingWorkbookWithLabel(label, targets);
+    const [org] = await db.select().from(orgSettings).limit(1);
+    const currency = normalizeBillingCurrency(org?.billingCurrency);
+    const buffer = buildBillingWorkbookWithLabel(label, targets, currency);
     const fileName = billingFileName(first.year, first.month).replace(
       `${first.year}年${String(first.month).padStart(2, "0")}月`,
       label,

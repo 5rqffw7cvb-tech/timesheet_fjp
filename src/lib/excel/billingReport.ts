@@ -1,25 +1,31 @@
 import * as XLSX from "xlsx";
 import type { OverviewRow } from "@/lib/adminData";
 import { calcBillingByProjects } from "@/lib/billing";
+import { currencySymbol, type BillingCurrency } from "@/lib/currency";
 
 export function buildBillingWorkbook(year: number, month: number, rows: OverviewRow[]) {
   const title = `${year}/${String(month).padStart(2, "0")} Customer Billing`;
-  return buildWorkbookCore(title, rows);
+  return buildWorkbookCore(title, rows, "JPY");
 }
 
-export function buildBillingWorkbookWithLabel(periodLabel: string, rows: OverviewRow[]) {
-  return buildWorkbookCore(`${periodLabel} Customer Billing`, rows);
+export function buildBillingWorkbookWithLabel(
+  periodLabel: string,
+  rows: OverviewRow[],
+  currency: BillingCurrency,
+) {
+  return buildWorkbookCore(`${periodLabel} Customer Billing`, rows, currency);
 }
 
-function buildWorkbookCore(title: string, rows: OverviewRow[]) {
+function buildWorkbookCore(title: string, rows: OverviewRow[], currency: BillingCurrency) {
   const wb = XLSX.utils.book_new();
+  const moneyUnit = currencySymbol(currency);
 
   const summary: any[][] = [
     [title],
     ["Rule", "< 140h * factor: deduct", "> 180h * factor: charge", "140h~180h: no adjustment"],
-    ["Note", "If unit price = 0, adjustment amount will be 0"],
+    ["Note", `If unit price (${moneyUnit}/MM) = 0, adjustment amount will be 0`],
     [],
-    ["No", "Member", "Factor", "Unit Price", "Actual Hours", "Lower Bound", "Upper Bound", "Shortage Hours", "Overtime Hours", "Adjustment Hours", "Adjustment MM", "Adjustment Amount (VND)", "Status"],
+    ["No", "Member", "Factor", `Unit Price (${moneyUnit}/MM)`, "Actual Hours", "Lower Bound", "Upper Bound", "Shortage Hours", "Overtime Hours", "Adjustment Hours", "Adjustment MM", `Adjustment Amount (${moneyUnit})`, "Status"],
   ];
 
   const startRow = 6;
