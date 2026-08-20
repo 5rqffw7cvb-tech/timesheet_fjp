@@ -120,6 +120,10 @@ export default function SettingsPanel({
             Ngày lễ sẽ được đánh dấu 公休 ở cột 休日 của 勤務報告書
           </span>
         </div>
+        <div className="px-4 pt-3 text-xs text-slate-500">
+          Mặc định hệ thống tính nghỉ Thứ 7/CN. Danh sách ngày lễ Nhật của năm đang xem được nạp tự động;
+          quản trị vẫn có thể thêm ngày nghỉ riêng bên dưới.
+        </div>
         <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4">
           <div>
             <label className="label">Ngày</label>

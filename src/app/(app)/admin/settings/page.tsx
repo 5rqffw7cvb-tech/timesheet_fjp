@@ -6,6 +6,7 @@ import { todayParts, ymd, daysInMonth } from "@/lib/dates";
 import { defaultWorkingDays } from "@/lib/period";
 import SettingsPanel from "./SettingsPanel";
 import { normalizeBillingCurrency } from "@/lib/currency";
+import { japanesePublicHolidays } from "@/lib/jpHolidays";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,14 @@ export default async function SettingsPage({
   const now = todayParts();
   const year = Number(sp.year) || now.year;
   const month = Number(sp.month) || now.month;
+
+  // Mặc định nạp lịch ngày lễ Nhật cho năm đang xem (không ghi đè ngày admin đã thêm/sửa).
+  const jpHolidays = japanesePublicHolidays(year);
+  if (jpHolidays.length) {
+    await db.insert(holidays)
+      .values(jpHolidays.map((h) => ({ date: h.date, name: h.name, type: "公休" })))
+      .onConflictDoNothing({ target: holidays.date });
+  }
 
   const [orgRows, settingRows, holidayRows] = await Promise.all([
     db.select().from(orgSettings).where(eq(orgSettings.id, "default")).limit(1),
