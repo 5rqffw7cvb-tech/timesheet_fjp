@@ -1,15 +1,20 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { LocaleProvider } from "@/components/LocaleProvider";
+import { getLocale } from "@/lib/requestLocale";
 
 export const metadata: Metadata = {
   title: "Timesheet — Yokogawa Rep Portal",
-  description: "Quản lý timesheet và xuất 週報 cho khách hàng",
+  description: "Timesheet management and weekly report export",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
   return (
-    <html lang="vi">
-      <body>{children}</body>
+    <html lang={locale}>
+      <body>
+        <LocaleProvider initialLocale={locale}>{children}</LocaleProvider>
+      </body>
     </html>
   );
 }

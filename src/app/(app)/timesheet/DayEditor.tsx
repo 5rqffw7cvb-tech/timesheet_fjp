@@ -5,6 +5,7 @@ import type { Project, WorkType } from "@/db/schema";
 import { minToHHMM, hhmmToMin, WEEKDAY_JA, WEEKDAY_VI, workedHours } from "@/lib/dates";
 import type { DayData, EntryData } from "@/lib/period";
 import { containsText, sortRows, toggleSort, type SortState } from "@/lib/tableUi";
+import { useLocale } from "@/components/LocaleProvider";
 
 export interface DraftEntry extends Omit<EntryData, "id"> { key: string }
 
@@ -43,6 +44,7 @@ export default function DayEditor({
   onCopyPrev: () => void;
   canCopyPrev: boolean;
 }) {
+  const { t, locale } = useLocale();
   const groupedWorkTypes = useMemo(() => {
     const map = new Map<string, WorkType[]>();
     for (const w of workTypes) {
@@ -100,30 +102,31 @@ export default function DayEditor({
 
   const dateObj = new Date(day.date + "T00:00:00");
   const dateLabel = `${WEEKDAY_VI[day.weekday]} · ${String(day.day).padStart(2, "0")}/${String(dateObj.getMonth() + 1).padStart(2, "0")}/${dateObj.getFullYear()}`;
+  const weekdayLabel = locale === "ja" ? WEEKDAY_JA[day.weekday] : WEEKDAY_VI[day.weekday];
 
   return (
     <div className="card flex h-full flex-col">
       <div className="card-header">
         <div className="flex items-baseline gap-2">
           <h2 className="card-title">{dateLabel}</h2>
-          <span className="text-xs text-slate-400">({WEEKDAY_JA[day.weekday]}曜)</span>
+          <span className="text-xs text-slate-400">({weekdayLabel}{locale === "ja" ? "曜" : ""})</span>
           {day.isHoliday && (
-            <span className="badge bg-rose-100 text-rose-700">{day.holidayName || "Ngày lễ"}</span>
+            <span className="badge bg-rose-100 text-rose-700">{day.holidayName || (locale === "ja" ? "祝日" : "Holiday")}</span>
           )}
         </div>
         <div className="flex items-center gap-2">
           <button className="btn-secondary btn-sm" onClick={onCopyPrev}
                   disabled={readOnly || !canCopyPrev}
-                  title="Chép giờ và các dòng công việc từ ngày làm việc trước">
-            Chép ngày trước
+                  title={locale === "ja" ? "前営業日の時刻と作業明細をコピー" : "Copy time and work lines from the previous working day"}>
+            {locale === "ja" ? "前日コピー" : "Copy previous day"}
           </button>
           <button className="btn-primary btn-sm" onClick={() => { void onSave(); }}
                   disabled={readOnly}>
-            Lưu
+            {t("save")}
           </button>
           <button className="btn-ghost btn-sm text-rose-600 hover:bg-rose-50"
                   onClick={onClear} disabled={readOnly}>
-            Xoá ngày
+            {locale === "ja" ? "日をクリア" : "Clear day"}
           </button>
         </div>
       </div>
@@ -132,19 +135,19 @@ export default function DayEditor({
         {/* giờ vào / ra / nghỉ */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <div>
-            <label className="label">始業 — Giờ vào</label>
+            <label className="label">{t("timesheetStart")}</label>
             <input type="time" className="input num" disabled={readOnly}
                    value={minToHHMM(draft.startMin)}
                    onChange={(e) => patch({ startMin: hhmmToMin(e.target.value) })} />
           </div>
           <div>
-            <label className="label">終業 — Giờ ra</label>
+            <label className="label">{t("timesheetEnd")}</label>
             <input type="time" className="input num" disabled={readOnly}
                    value={minToHHMM(draft.endMin)}
                    onChange={(e) => patch({ endMin: hhmmToMin(e.target.value) })} />
           </div>
           <div>
-            <label className="label">休憩 — Nghỉ (phút)</label>
+            <label className="label">{t("timesheetBreak")}</label>
             <input type="number" min={0} max={600} step={15} className="input num"
                    disabled={readOnly} value={draft.breakMin}
                    onChange={(e) => patch({ breakMin: Number(e.target.value) || 0 })} />
@@ -156,7 +159,7 @@ export default function DayEditor({
             </div>
           </div>
           <div>
-            <label className="label">Loại ngày</label>
+            <label className="label">{t("timesheetDayType")}</label>
             <select className="select" disabled={readOnly} value={draft.dayType}
                     onChange={(e) => patch({ dayType: e.target.value as DayData["dayType"] })}>
               {DAY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -166,7 +169,7 @@ export default function DayEditor({
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="label">勤務欄 / 休暇 — Ghi chú nghỉ</label>
+            <label className="label">{locale === "ja" ? "勤務欄 / 休暇" : "Leave note"}</label>
             <input className="input" list="leave-presets" disabled={readOnly}
                    placeholder="vd: 午前休, 遅刻30分…"
                    value={draft.leaveNote ?? ""}
@@ -176,7 +179,7 @@ export default function DayEditor({
             </datalist>
           </div>
           <div>
-            <label className="label">備考 — Ghi chú cho 勤務報告書</label>
+            <label className="label">{t("timesheetNoteLabel")}</label>
             <input className="input" disabled={readOnly}
                    value={draft.remark ?? ""}
                    onChange={(e) => patch({ remark: e.target.value || null })} />
@@ -190,11 +193,11 @@ export default function DayEditor({
               Chi tiết công việc
             </h3>
             <div className="text-xs num">
-              <span className="text-slate-500">Tổng dòng: </span>
+              <span className="text-slate-500">{locale === "ja" ? "合計: " : "Total: "}</span>
               <span className="font-semibold text-slate-700">{entryTotal.toFixed(2)}h</span>
               {attendance > 0 && (
-                <span className={`ml-2 ${diff === 0 ? "text-emerald-600" : "text-amber-600"}`}>
-                  {diff === 0 ? "khớp 就業時間" : `lệch ${diff > 0 ? "+" : ""}${diff.toFixed(2)}h`}
+                  <span className={`ml-2 ${diff === 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                  {diff === 0 ? (locale === "ja" ? "就業時間と一致" : "matches attendance") : `${locale === "ja" ? "差分" : "diff"} ${diff > 0 ? "+" : ""}${diff.toFixed(2)}h`}
                 </span>
               )}
             </div>
@@ -202,16 +205,16 @@ export default function DayEditor({
 
           <div className="overflow-x-auto rounded-md border border-slate-200">
             <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2">
-              <input className="input w-64" placeholder="Tìm dòng công việc…" value={q} onChange={(e) => setQ(e.target.value)} />
+              <input className="input w-64" placeholder={t("lineSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
             <table className="data">
               <thead>
                 <tr>
-                  <th className="w-[190px]"><button onClick={() => setSort(toggleSort(sort, "project"))}>プロジェクト</button></th>
-                  <th className="w-[260px]"><button onClick={() => setSort(toggleSort(sort, "workType"))}>工種</button></th>
-                  <th>主な作業内容</th>
-                  <th className="w-[84px] text-right"><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">Giờ</button></th>
-                  <th className="w-[74px]"><button onClick={() => setSort(toggleSort(sort, "isPlan"))}>予定</button></th>
+                  <th className="w-[190px]"><button onClick={() => setSort(toggleSort(sort, "project"))}>{t("timesheetProject")}</button></th>
+                  <th className="w-[260px]"><button onClick={() => setSort(toggleSort(sort, "workType"))}>{t("timesheetWorkType")}</button></th>
+                  <th>{t("timesheetDescription")}</th>
+                  <th className="w-[84px] text-right"><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">{t("timesheetHours")}</button></th>
+                  <th className="w-[74px]"><button onClick={() => setSort(toggleSort(sort, "isPlan"))}>{t("timesheetPlanned")}</button></th>
                   <th className="w-[44px]"></th>
                 </tr>
               </thead>
@@ -219,7 +222,7 @@ export default function DayEditor({
                 {filteredEntries.length === 0 && (
                   <tr>
                     <td colSpan={6} className="py-6 text-center text-sm text-slate-400">
-                      Chưa có dòng nào khớp bộ lọc. Bấm “Thêm dòng” để bắt đầu.
+                      {t("timesheetNoMatchingRows")}
                     </td>
                   </tr>
                 )}
@@ -273,7 +276,7 @@ export default function DayEditor({
           </div>
 
           <button className="btn-secondary btn-sm mt-2" onClick={addEntry} disabled={readOnly}>
-            + Thêm dòng
+            + {t("timesheetAddLine")}
           </button>
         </div>
       </div>

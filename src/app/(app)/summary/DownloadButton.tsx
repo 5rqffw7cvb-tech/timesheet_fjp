@@ -1,19 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function DownloadButton({
   year, month, userId,
 }: { year: number; month: number; userId: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { locale } = useLocale();
 
   async function run() {
     setBusy(true); setErr(null);
     try {
       const res = await fetch(`/api/export?year=${year}&month=${month}&user=${userId}`);
       if (!res.ok) {
-        const j = await res.json().catch(() => ({ error: "Không tải được file" }));
+        const j = await res.json().catch(() => ({ error: locale === "ja" ? "ファイルを取得できません" : "Unable to download file" }));
         setErr(j.error); return;
       }
       const d = res.headers.get("Content-Disposition") ?? "";
@@ -31,7 +33,7 @@ export default function DownloadButton({
     <div className="flex items-center gap-2">
       {err && <span className="text-xs text-rose-600">{err}</span>}
       <button className="btn-secondary" onClick={run} disabled={busy}>
-        {busy ? "Đang tạo…" : "Tải 週報 của tôi"}
+        {busy ? (locale === "ja" ? "作成中…" : "Creating…") : (locale === "ja" ? "自分の週報をダウンロード" : "Download my weekly report")}
       </button>
     </div>
   );

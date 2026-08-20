@@ -1,32 +1,36 @@
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth";
 import AppShell, { type NavItem } from "@/components/AppShell";
-
-const MEMBER_NAV: NavItem[] = [
-  { href: "/timesheet", label: "Nhập timesheet" },
-  { href: "/summary", label: "Tổng hợp tháng" },
-];
-
-const ADMIN_NAV: NavItem[] = [
-  { href: "/admin", label: "Theo dõi" },
-  { href: "/admin/approvals", label: "Duyệt & chốt sổ" },
-  { href: "/admin/budgets", label: "Budget" },
-  { href: "/admin/export", label: "Xuất 週報" },
-  { href: "/admin/members", label: "Thành viên" },
-  { href: "/admin/masters", label: "PJ / 工種" },
-  { href: "/admin/settings", label: "Cấu hình" },
-  { href: "/timesheet", label: "Timesheet của tôi" },
-];
+import { getLocale } from "@/lib/requestLocale";
+import { getMessage } from "@/lib/i18n";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await currentUser();
   if (!user) redirect("/login");
   if (user.mustChangePw) redirect("/change-password");
+  const locale = await getLocale();
+
+  const memberNav: NavItem[] = [
+    { href: "/timesheet", label: getMessage(locale, "navTimesheet") },
+    { href: "/summary", label: getMessage(locale, "navSummary") },
+  ];
+
+  const adminNav: NavItem[] = [
+    { href: "/admin", label: getMessage(locale, "navDashboard") },
+    { href: "/admin/approvals", label: getMessage(locale, "navApprovals") },
+    { href: "/admin/budgets", label: getMessage(locale, "navBudget") },
+    { href: "/admin/export", label: getMessage(locale, "navExport") },
+    { href: "/admin/members", label: getMessage(locale, "navMembers") },
+    { href: "/admin/masters", label: getMessage(locale, "navMasters") },
+    { href: "/admin/settings", label: getMessage(locale, "navSettings") },
+    { href: "/timesheet", label: getMessage(locale, "navMyTimesheet") },
+  ];
 
   return (
     <AppShell
       user={user}
-      nav={user.role === "ADMIN" ? ADMIN_NAV : MEMBER_NAV}
+      nav={user.role === "ADMIN" ? adminNav : memberNav}
+      locale={locale}
     >
       {children}
     </AppShell>

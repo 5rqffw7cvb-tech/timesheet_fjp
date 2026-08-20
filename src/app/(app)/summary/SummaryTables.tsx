@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import BudgetBar from "@/components/BudgetBar";
 import StatusBadge from "@/components/StatusBadge";
-import { WEEKDAY_VI, minToHHMM } from "@/lib/dates";
+import { useLocale } from "@/components/LocaleProvider";
+import { WEEKDAY_JA, WEEKDAY_VI, minToHHMM } from "@/lib/dates";
 import { containsText, sortRows, toggleSort, type SortState } from "@/lib/tableUi";
 import type { MonthData } from "@/lib/period";
 
@@ -30,6 +31,7 @@ export default function SummaryTables({
 function WeekTable({ data }: { data: MonthData }) {
   const [sort, setSort] = useState<SortState>({ key: "week", dir: "asc" });
   const [q, setQ] = useState("");
+  const { t, locale } = useLocale();
   const rows = useMemo(() => {
     const totals = new Map<number, number>();
     for (const d of data.days) {
@@ -48,12 +50,12 @@ function WeekTable({ data }: { data: MonthData }) {
   return (
     <div className="card overflow-hidden">
       <div className="card-header flex flex-wrap items-center gap-2">
-        <h2 className="card-title">Theo tuần (khớp với sheet 1週～6週)</h2>
-        <span className="text-xs text-slate-400">Sort trực tiếp bằng tiêu đề bảng</span>
-        <input className="input ml-auto w-56" placeholder="Lọc tuần / giờ…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <h2 className="card-title">{t("summaryWeekTitle")}</h2>
+        <span className="text-xs text-slate-400">{locale === "ja" ? "見出しクリックで並び替え" : "Click headers to sort"}</span>
+        <input className="input ml-auto w-56" placeholder={locale === "ja" ? "週 / 時間を検索…" : "Search week / hours…"} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <table className="data">
-        <thead><tr><th><button onClick={() => setSort(toggleSort(sort, "week"))}>Tuần</button></th><th><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">Giờ</button></th><th>Tỷ trọng</th></tr></thead>
+        <thead><tr><th><button onClick={() => setSort(toggleSort(sort, "week"))}>{locale === "ja" ? "週" : "Week"}</button></th><th><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">{t("timesheetHours")}</button></th><th>{locale === "ja" ? "割合" : "Share"}</th></tr></thead>
         <tbody>
           {sorted.map(({ week, hours }) => (
             <tr key={week}>
@@ -75,6 +77,7 @@ function WeekTable({ data }: { data: MonthData }) {
 function TypeTable({ data, byType }: { data: MonthData; byType: Array<{ code: string; name: string; category: string; projectName: string; hours: string }> }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: "code", dir: "asc" });
+  const { t, locale } = useLocale();
   const rows = useMemo(() => {
     const needle = q.trim();
     const base = needle ? byType.filter((t) => [t.code, t.name, t.category, t.projectName].some((v) => containsText(v, needle))) : byType;
@@ -90,9 +93,9 @@ function TypeTable({ data, byType }: { data: MonthData; byType: Array<{ code: st
   return (
     <div className="card overflow-hidden">
       <div className="card-header flex flex-wrap items-center gap-2">
-        <h2 className="card-title">Theo 工種</h2>
-        <span className="text-xs text-slate-400">đúng cách khách hàng tổng hợp trong 月間集計シート</span>
-        <input className="input ml-auto w-64" placeholder="Tìm 工種 / project…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <h2 className="card-title">{t("summaryTypeTitle")}</h2>
+        <span className="text-xs text-slate-400">{locale === "ja" ? "月間集計シートと同じ集計単位" : "Matches the monthly summary sheet"}</span>
+        <input className="input ml-auto w-64" placeholder={locale === "ja" ? "工種 / プロジェクトを検索…" : "Search work type / project…"} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <table className="data">
         <thead>
@@ -100,7 +103,7 @@ function TypeTable({ data, byType }: { data: MonthData; byType: Array<{ code: st
             <th><button onClick={() => setSort(toggleSort(sort, "code"))}>CD</button></th>
             <th><button onClick={() => setSort(toggleSort(sort, "name"))}>工種</button></th>
             <th><button onClick={() => setSort(toggleSort(sort, "projectName"))}>プロジェクト</button></th>
-            <th><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">Giờ</button></th>
+            <th><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">{t("timesheetHours")}</button></th>
             <th className="text-right">%</th>
           </tr>
         </thead>
@@ -117,7 +120,7 @@ function TypeTable({ data, byType }: { data: MonthData; byType: Array<{ code: st
               </tr>
             );
           })}
-          {rows.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-slate-400">Chưa nhập giờ nào trong tháng này.</td></tr>}
+          {rows.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-slate-400">{t("summaryTableNoData")}</td></tr>}
         </tbody>
       </table>
     </div>
@@ -127,6 +130,7 @@ function TypeTable({ data, byType }: { data: MonthData; byType: Array<{ code: st
 function AttendanceTable({ data, year, month }: { data: MonthData; year: number; month: number }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: "date", dir: "asc" });
+  const { t, locale } = useLocale();
   const rows = useMemo(() => {
     const needle = q.trim();
     const base = needle
@@ -143,19 +147,19 @@ function AttendanceTable({ data, year, month }: { data: MonthData; year: number;
   return (
     <div className="card overflow-hidden">
       <div className="card-header flex flex-wrap items-center gap-2">
-        <h2 className="card-title">Bảng chấm công</h2>
+        <h2 className="card-title">{t("summaryAttendanceTitle")}</h2>
         <span className="text-xs text-slate-400">{year}/{String(month).padStart(2, "0")}</span>
-        <input className="input ml-auto w-64" placeholder="Tìm ngày / ghi chú…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input ml-auto w-64" placeholder={t("dateSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <div className="max-h-[520px] overflow-y-auto">
         <table className="data">
           <thead>
             <tr>
-              <th><button onClick={() => setSort(toggleSort(sort, "day"))}>Ngày</button></th>
-              <th>始業</th><th>終業</th><th className="text-right">休憩</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "day"))}>{locale === "ja" ? "日付" : "Day"}</button></th>
+              <th>{t("timesheetStart")}</th><th>{t("timesheetEnd")}</th><th className="text-right">{t("timesheetBreak")}</th>
               <th><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">就業時間</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "entryHours"))} className="text-right">Giờ chi tiết</button></th>
-              <th>Ghi chú</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "entryHours"))} className="text-right">{t("timesheetHours")}</button></th>
+              <th>{t("timesheetTypeLabel")}</th>
             </tr>
           </thead>
           <tbody>
@@ -164,7 +168,7 @@ function AttendanceTable({ data, year, month }: { data: MonthData; year: number;
               return (
                 <tr key={d.date} className={d.isWeekend || d.isHoliday ? "bg-slate-50/70" : ""}>
                   <td className="whitespace-nowrap num">
-                    {String(d.day).padStart(2, "0")} <span className={d.isWeekend || d.isHoliday ? "text-rose-400" : "text-slate-400"}>{WEEKDAY_VI[d.weekday]}</span>
+                    {String(d.day).padStart(2, "0")} <span className={d.isWeekend || d.isHoliday ? "text-rose-400" : "text-slate-400"}>{locale === "ja" ? WEEKDAY_JA[d.weekday] : WEEKDAY_VI[d.weekday]}</span>
                   </td>
                   <td className="num">{minToHHMM(d.startMin) || "—"}</td>
                   <td className="num">{minToHHMM(d.endMin) || "—"}</td>
@@ -175,7 +179,7 @@ function AttendanceTable({ data, year, month }: { data: MonthData; year: number;
                 </tr>
               );
             })}
-            {rows.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400">Không có ngày nào khớp bộ lọc.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-slate-400">{t("noData")}</td></tr>}
           </tbody>
         </table>
       </div>

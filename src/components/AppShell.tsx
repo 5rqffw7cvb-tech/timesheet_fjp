@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { logoutAction } from "@/actions/auth";
 import NavLinks from "./NavLinks";
+import LocaleSwitcher from "./LocaleSwitcher";
+import { type Locale, getMessage } from "@/lib/i18n";
 
 export interface NavItem { href: string; label: string; }
 
 export default function AppShell({
-  user, nav, children,
+  user, nav, locale, children,
 }: {
   user: { fullName: string; username: string; role: string; roleTitle?: string | null };
   nav: NavItem[];
+  locale: Locale;
   children: React.ReactNode;
 }) {
   return (
@@ -25,17 +28,18 @@ export default function AppShell({
           <NavLinks items={nav} />
 
           <div className="flex shrink-0 items-center gap-3">
+            <LocaleSwitcher />
             <div className="hidden text-right sm:block">
               <div className="text-sm font-medium leading-tight text-slate-700">{user.fullName}</div>
               <div className="text-xs leading-tight text-slate-400">
-                {user.role === "ADMIN" ? "Quản trị" : user.roleTitle || "Member"}
+                {user.role === "ADMIN" ? getMessage(locale, "adminRole") : user.roleTitle || getMessage(locale, "memberRole")}
               </div>
             </div>
-            <Link href="/change-password" className="btn-ghost btn-sm" title="Đổi mật khẩu">
-              Mật khẩu
+            <Link href="/change-password" className="btn-ghost btn-sm" title={getMessage(locale, "passwordMenu")}>
+              {getMessage(locale, "passwordMenu")}
             </Link>
             <form action={logoutAction}>
-              <button type="submit" className="btn-secondary btn-sm">Đăng xuất</button>
+              <button type="submit" className="btn-secondary btn-sm">{getMessage(locale, "logout")}</button>
             </form>
           </div>
         </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import MonthNav from "@/components/MonthNav";
 import StatusBadge from "@/components/StatusBadge";
 import BudgetBar from "@/components/BudgetBar";
+import { useLocale } from "@/components/LocaleProvider";
 import { reviewReportAction, reopenReportAction, bulkApproveAction } from "@/actions/admin";
 import type { OverviewRow } from "@/lib/adminData";
 import type { MonthData } from "@/lib/period";
@@ -20,6 +21,7 @@ export default function ApprovalPanel({
   detail: MonthData | null;
 }) {
   const router = useRouter();
+  const { t, locale } = useLocale();
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
@@ -54,17 +56,17 @@ export default function ApprovalPanel({
     if (!selected) return;
     startTransition(async () => {
       const res = await reviewReportAction(selected.userId, year, month, decision, note);
-      setMsg(res.ok ? res.message ?? "Xong" : res.error ?? "Lỗi");
+      setMsg(res.ok ? (res.message ?? (locale === "ja" ? "処理しました。" : "Done.")) : res.error ?? (locale === "ja" ? "エラー" : "Error"));
       if (res.ok) { setNote(""); router.refresh(); }
     });
   }
 
   function reopen() {
     if (!selected) return;
-    if (!confirm("Mở lại tháng này để member sửa?")) return;
+    if (!confirm(locale === "ja" ? "この月を再編集可能にしますか？" : "Reopen this month for editing?")) return;
     startTransition(async () => {
       const res = await reopenReportAction(selected.userId, year, month, note);
-      setMsg(res.ok ? res.message ?? "Đã mở lại" : res.error ?? "Lỗi");
+      setMsg(res.ok ? (res.message ?? (locale === "ja" ? "再オープンしました。" : "Reopened.")) : res.error ?? (locale === "ja" ? "エラー" : "Error"));
       router.refresh();
     });
   }
@@ -72,7 +74,7 @@ export default function ApprovalPanel({
   function approveChecked() {
     startTransition(async () => {
       const res = await bulkApproveAction(year, month, [...checked]);
-      setMsg(res.ok ? res.message ?? "Xong" : res.error ?? "Lỗi");
+      setMsg(res.ok ? (res.message ?? (locale === "ja" ? "処理しました。" : "Done.")) : res.error ?? (locale === "ja" ? "エラー" : "Error"));
       setChecked(new Set());
       router.refresh();
     });
@@ -88,15 +90,15 @@ export default function ApprovalPanel({
         <MonthNav year={year} month={month} />
         <span className="text-sm text-slate-500">
           {pending.length > 0
-            ? `${pending.length} thành viên đang chờ duyệt`
-            : "Không có ai chờ duyệt"}
+            ? t("approvalWaiting", { count: pending.length })
+            : t("approvalNoneWaiting")}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          <input className="input w-64" placeholder="Tìm member…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input className="input w-64" placeholder={t("approvalSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
           {msg && <span className="text-xs text-slate-500">{msg}</span>}
           <button className="btn-success" disabled={busy || checked.size === 0}
                   onClick={approveChecked}>
-            Chốt {checked.size > 0 ? `${checked.size} mục đã chọn` : "hàng loạt"}
+            {locale === "ja" ? "一括締め" : "Approve"} {checked.size > 0 ? `(${checked.size})` : ""}
           </button>
         </div>
       </div>
@@ -104,10 +106,10 @@ export default function ApprovalPanel({
       <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
         <div className="card overflow-hidden">
           <div className="card-header">
-            <h2 className="card-title">Thành viên</h2>
+            <h2 className="card-title">{t("approvalMemberTitle")}</h2>
             <button className="btn-ghost btn-sm"
                     onClick={() => setChecked(new Set(pending.map((p) => p.userId)))}>
-              Chọn hết đang chờ
+              {t("approvalSelectAll")}
             </button>
           </div>
           <div className="max-h-[640px] overflow-y-auto">
@@ -115,9 +117,9 @@ export default function ApprovalPanel({
               <thead>
                 <tr>
                   <th></th>
-                  <th><button onClick={() => setSort(toggleSort(sort, "fullName"))}>Thành viên</button></th>
-                  <th><button onClick={() => setSort(toggleSort(sort, "usedHours"))} className="text-right">Giờ</button></th>
-                  <th><button onClick={() => setSort(toggleSort(sort, "status"))}>Trạng thái</button></th>
+                  <th><button onClick={() => setSort(toggleSort(sort, "fullName"))}>{t("membersTitle")}</button></th>
+                  <th><button onClick={() => setSort(toggleSort(sort, "usedHours"))} className="text-right">{t("timesheetHours")}</button></th>
+                  <th><button onClick={() => setSort(toggleSort(sort, "status"))}>{t("membersStatus")}</button></th>
                 </tr>
               </thead>
               <tbody>
@@ -144,7 +146,7 @@ export default function ApprovalPanel({
                   </tr>
                 ))}
                 {filteredRows.length === 0 && (
-                  <tr><td colSpan={4} className="py-8 text-center text-slate-400">Không có member nào khớp bộ lọc.</td></tr>
+                  <tr><td colSpan={4} className="py-8 text-center text-slate-400">{t("noData")}</td></tr>
                 )}
               </tbody>
             </table>
@@ -153,7 +155,7 @@ export default function ApprovalPanel({
 
         <div className="space-y-4">
           {!selected && (
-            <div className="card p-8 text-center text-slate-400">Chọn một thành viên để xem chi tiết.</div>
+            <div className="card p-8 text-center text-slate-400">{locale === "ja" ? "メンバーを選択すると詳細が表示されます。" : "Select a member to view details."}</div>
           )}
 
           {selected && (
@@ -164,19 +166,19 @@ export default function ApprovalPanel({
                     <h2 className="card-title">{selected.fullName}</h2>
                     <p className="text-xs text-slate-400">
                       {selected.roleTitle ?? "—"} · {selected.username}
-                      {selected.submittedAt && ` · nộp lúc ${new Date(selected.submittedAt).toLocaleString("vi-VN")}`}
+                      {selected.submittedAt && ` · ${locale === "ja" ? "提出" : "submitted"} ${new Date(selected.submittedAt).toLocaleString(locale === "ja" ? "ja-JP" : "en-US")}`}
                     </p>
                   </div>
                   <StatusBadge status={selected.status} />
                 </div>
 
                 <div className="grid gap-3 p-4 sm:grid-cols-4">
-                  <Metric label="就業時間 (giờ vào/ra)" value={`${selected.attendanceHours.toFixed(1)}h`} />
-                  <Metric label="Giờ chi tiết công việc" value={`${selected.usedHours.toFixed(1)}h`} />
-                  <Metric label="Chênh lệch"
+                    <Metric label={t("timesheetAttendance")} value={`${selected.attendanceHours.toFixed(1)}h`} />
+                    <Metric label={t("timesheetHours")} value={`${selected.usedHours.toFixed(1)}h`} />
+                    <Metric label={t("timesheetDiff")}
                           value={`${diff > 0 ? "+" : ""}${diff.toFixed(1)}h`}
                           tone={Math.abs(diff) > 0.01 ? "warn" : "ok"} />
-                  <Metric label="Số ngày có công" value={String(selected.daysLogged)} />
+                    <Metric label={locale === "ja" ? "稼働日数" : "Days"} value={String(selected.daysLogged)} />
                 </div>
 
                 <div className="grid gap-3 border-t border-slate-100 p-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -193,22 +195,22 @@ export default function ApprovalPanel({
 
                 {selected.memberNote && (
                   <div className="border-t border-slate-100 px-4 py-2 text-sm text-slate-600">
-                    <strong>Ghi chú của member:</strong> {selected.memberNote}
+                    <strong>{locale === "ja" ? "メンバー備考:" : "Member note:"}</strong> {selected.memberNote}
                   </div>
                 )}
 
                 <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
-                  <input className="input flex-1" placeholder="Nhận xét / lý do trả lại"
+                  <input className="input flex-1" placeholder={t("approvalNotesPlaceholder")}
                          value={note} onChange={(e) => setNote(e.target.value)} />
                   {selected.status === "APPROVED" ? (
-                    <button className="btn-secondary" onClick={reopen} disabled={busy}>Mở lại để sửa</button>
+                    <button className="btn-secondary" onClick={reopen} disabled={busy}>{t("statusOpen")}</button>
                   ) : (
                     <>
                       <button className="btn-danger" onClick={() => decide("REJECTED")} disabled={busy}>
-                        Trả lại
+                        {t("statusRejected")}
                       </button>
                       <button className="btn-success" onClick={() => decide("APPROVED")} disabled={busy}>
-                        Chốt sổ
+                        {t("statusClosed")}
                       </button>
                     </>
                   )}
@@ -235,6 +237,7 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: "
 }
 
 function DayTable({ detail }: { detail: MonthData }) {
+  const { t, locale } = useLocale();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: "date", dir: "asc" });
   const days = sortRows(
@@ -253,21 +256,21 @@ function DayTable({ detail }: { detail: MonthData }) {
   return (
     <div className="card overflow-hidden">
       <div className="card-header">
-        <h2 className="card-title">Chi tiết từng ngày</h2>
-        <span className="text-xs text-slate-400">{days.length} ngày có dữ liệu</span>
+        <h2 className="card-title">{t("approvalDayDetail")}</h2>
+        <span className="text-xs text-slate-400">{locale === "ja" ? `${days.length}日分のデータ` : `${days.length} days with data`}</span>
       </div>
       <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
-        <input className="input w-64" placeholder="Tìm theo ngày / ghi chú…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input w-64" placeholder={t("dateSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <div className="max-h-[560px] overflow-auto">
         <table className="data">
           <thead>
             <tr>
-              <th><button onClick={() => setSort(toggleSort(sort, "day"))}>Ngày</button></th>
-              <th>始業</th><th>終業</th><th className="text-right">休憩</th>
-              <th><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">就業</button></th>
-              <th>Công việc</th>
-              <th><button onClick={() => setSort(toggleSort(sort, "entryHours"))} className="text-right">Giờ</button></th><th>Ghi chú</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "day"))}>{locale === "ja" ? "日付" : "Day"}</button></th>
+              <th>{t("timesheetStart")}</th><th>{t("timesheetEnd")}</th><th className="text-right">{t("timesheetBreak")}</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">{t("timesheetAttendance")}</button></th>
+              <th>{t("timesheetWorkDetails")}</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "entryHours"))} className="text-right">{t("timesheetHours")}</button></th><th>{t("timesheetTypeLabel")}</th>
             </tr>
           </thead>
           <tbody>
@@ -286,7 +289,7 @@ function DayTable({ detail }: { detail: MonthData }) {
                     <div className="space-y-0.5">
                       {d.entries.map((e) => (
                         <div key={e.id} className="text-xs text-slate-600">
-                          {e.description || <span className="text-slate-400">(không mô tả)</span>}
+                          {e.description || <span className="text-slate-400">{locale === "ja" ? "(説明なし)" : "(no description)"}</span>}
                           {e.isPlan && <span className="ml-1 text-brand-500">[予定]</span>}
                         </div>
                       ))}
@@ -300,7 +303,7 @@ function DayTable({ detail }: { detail: MonthData }) {
               );
             })}
             {days.length === 0 && (
-              <tr><td colSpan={8} className="py-8 text-center text-slate-400">Không có ngày nào khớp bộ lọc.</td></tr>
+              <tr><td colSpan={8} className="py-8 text-center text-slate-400">{t("noData")}</td></tr>
             )}
           </tbody>
         </table>

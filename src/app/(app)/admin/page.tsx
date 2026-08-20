@@ -7,6 +7,8 @@ import StatusBadge from "@/components/StatusBadge";
 import BudgetBar from "@/components/BudgetBar";
 import { calcBillingByProjects } from "@/lib/billing";
 import AdminOverviewTable from "./AdminOverviewTable";
+import { getLocale } from "@/lib/requestLocale";
+import { getMessage, formatNumber } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,7 @@ export default async function AdminDashboard({
   const now = todayParts();
   const year = Number(sp.year) || now.year;
   const month = Number(sp.month) || now.month;
+  const locale = await getLocale();
 
   const [rows, workingDays] = await Promise.all([
     monthOverview(year, month),
@@ -45,23 +48,23 @@ export default async function AdminDashboard({
     <div className="space-y-4">
       <div className="card flex flex-wrap items-center gap-3 px-4 py-3">
         <MonthNav year={year} month={month} />
-        <Stat label="Thành viên" value={String(rows.length)} />
-        <Stat label="Đã nộp" value={`${totals.submitted}/${rows.length}`} />
-        <Stat label="Đã chốt" value={`${totals.approved}/${rows.length}`} />
-        <Stat label="Tổng giờ" value={totals.used.toFixed(1)} sub={`/ ${totals.budget.toFixed(1)}h budget`} />
-        <Stat label="Điều chỉnh billing" value={billingTotal.toLocaleString("en-US")} />
-        <Stat label="所定日数" value={String(workingDays)} />
+        <Stat label={getMessage(locale, "dashboardMemberCount")} value={String(rows.length)} />
+        <Stat label={getMessage(locale, "dashboardSubmitted")} value={`${totals.submitted}/${rows.length}`} />
+        <Stat label={getMessage(locale, "dashboardApproved")} value={`${totals.approved}/${rows.length}`} />
+        <Stat label={getMessage(locale, "dashboardTotalHours")} value={totals.used.toFixed(1)} sub={` / ${totals.budget.toFixed(1)}h`} />
+        <Stat label={getMessage(locale, "dashboardBillingAdjust")} value={formatNumber(locale, billingTotal)} />
+        <Stat label={getMessage(locale, "dashboardWorkingDays")} value={String(workingDays)} />
         <div className="ml-auto flex gap-2">
-          <Link href={`/admin/budgets?year=${year}&month=${month}`} className="btn-secondary btn-sm">Set budget</Link>
-          <Link href={`/admin/approvals?year=${year}&month=${month}`} className="btn-secondary btn-sm">Duyệt</Link>
-          <Link href={`/admin/export?year=${year}&month=${month}`} className="btn-primary btn-sm">Xuất 週報</Link>
+          <Link href={`/admin/budgets?year=${year}&month=${month}`} className="btn-secondary btn-sm">{getMessage(locale, "budgetTitle")}</Link>
+          <Link href={`/admin/approvals?year=${year}&month=${month}`} className="btn-secondary btn-sm">{getMessage(locale, "approvalsTitle")}</Link>
+          <Link href={`/admin/export?year=${year}&month=${month}`} className="btn-primary btn-sm">{getMessage(locale, "exportTitle")}</Link>
         </div>
       </div>
 
       <AdminOverviewTable rows={rows} year={year} month={month} />
 
       <div className="card">
-        <div className="card-header"><h2 className="card-title">Chi tiết theo project</h2></div>
+        <div className="card-header"><h2 className="card-title">{getMessage(locale, "detailByProject")}</h2></div>
         <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
           {rows.filter((r) => r.byProject.length > 0).map((r) => (
             <div key={r.userId} className="rounded-md border border-slate-200 p-3">

@@ -7,10 +7,12 @@ import StatusBadge from "@/components/StatusBadge";
 import { calcBillingByProjects } from "@/lib/billing";
 import type { OverviewRow } from "@/lib/adminData";
 import { containsText, sortRows, toggleSort, type SortState } from "@/lib/tableUi";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function AdminOverviewTable({ rows, year, month }: { rows: OverviewRow[]; year: number; month: number }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: "fullName", dir: "asc" });
+  const { t, locale } = useLocale();
 
   const filtered = useMemo(() => {
     const needle = q.trim();
@@ -33,23 +35,23 @@ export default function AdminOverviewTable({ rows, year, month }: { rows: Overvi
   return (
     <div className="card overflow-hidden">
       <div className="card-header flex flex-wrap items-center gap-2">
-        <h2 className="card-title">Tiến độ giờ so với budget</h2>
-        <input className="input ml-auto w-64" placeholder="Tìm member…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <span className="text-xs text-slate-400">“Chênh lệch” = tổng giờ chi tiết − 就業時間 tính từ giờ vào/ra</span>
+        <h2 className="card-title">{t("dashboardProgressTitle")}</h2>
+        <input className="input ml-auto w-64" placeholder={t("memberSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
+        <span className="text-xs text-slate-400">{t("dashboardProgressNote")}</span>
       </div>
       <div className="overflow-x-auto">
         <table className="data">
           <thead>
             <tr>
-              <th><button onClick={() => setSort(toggleSort(sort, "fullName"))}>Thành viên</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "roleTitle"))}>Vai trò</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "daysLogged"))} className="text-right">Ngày công</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">就業時間</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "usedHours"))} className="text-right">Giờ chi tiết</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "diff"))} className="text-right">Chênh lệch</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "budgetHours"))} className="text-right">Budget</button></th>
-              <th className="w-[190px]">Tiến độ</th>
-              <th><button onClick={() => setSort(toggleSort(sort, "status"))}>Trạng thái</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "fullName"))}>{t("membersName")}</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "roleTitle"))}>{t("membersRole")}</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "daysLogged"))} className="text-right">{locale === "ja" ? "稼働日数" : "Days"}</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">{t("timesheetAttendance")}</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "usedHours"))} className="text-right">{t("timesheetHours")}</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "diff"))} className="text-right">{t("timesheetDiff")}</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "budgetHours"))} className="text-right">{t("budgetTitle")}</button></th>
+              <th className="w-[190px]">{locale === "ja" ? "進捗" : "Progress"}</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "status"))}>{t("membersStatus")}</button></th>
               <th></th>
             </tr>
           </thead>
@@ -75,13 +77,13 @@ export default function AdminOverviewTable({ rows, year, month }: { rows: Overvi
                   <td><BudgetBar used={r.usedHours} budget={r.budgetHours} /></td>
                   <td><StatusBadge status={r.status} /></td>
                   <td className="text-right">
-                    <Link href={`/admin/approvals?year=${year}&month=${month}&user=${r.userId}`} className="btn-ghost btn-sm">Chi tiết</Link>
+                    <Link href={`/admin/approvals?year=${year}&month=${month}&user=${r.userId}`} className="btn-ghost btn-sm">{locale === "ja" ? "詳細" : "Details"}</Link>
                   </td>
                 </tr>
               );
             })}
             {filtered.length === 0 && (
-              <tr><td colSpan={10} className="py-8 text-center text-slate-400">Không có member nào khớp bộ lọc.</td></tr>
+              <tr><td colSpan={10} className="py-8 text-center text-slate-400">{t("noData")}</td></tr>
             )}
           </tbody>
         </table>

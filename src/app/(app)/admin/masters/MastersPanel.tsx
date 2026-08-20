@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { upsertProjectAction, upsertWorkTypeAction } from "@/actions/admin";
+import { useLocale } from "@/components/LocaleProvider";
 import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableUi";
 
 interface P { id: string; systemCode: string; systemName: string; code: string; name: string; isActive: boolean }
@@ -11,16 +12,17 @@ interface W { id: string; code: string; name: string; category: string; note: st
 export default function MastersPanel({ projects, workTypes }: { projects: P[]; workTypes: W[] }) {
   const [tab, setTab] = useState<"pj" | "wt">("pj");
   const [msg, setMsg] = useState<string | null>(null);
+  const { t, locale } = useLocale();
 
   return (
     <div className="space-y-4">
       <div className="card flex items-center gap-2 px-4 py-3">
         <button className={tab === "pj" ? "btn-primary btn-sm" : "btn-ghost btn-sm"}
-                onClick={() => setTab("pj")}>PJ — Project ({projects.length})</button>
+                onClick={() => setTab("pj")}>{t("mastersProjectTitle")} ({projects.length})</button>
         <button className={tab === "wt" ? "btn-primary btn-sm" : "btn-ghost btn-sm"}
-                onClick={() => setTab("wt")}>工種 — Loại công việc ({workTypes.length})</button>
+                onClick={() => setTab("wt")}>{t("mastersWorkTypeTitle")} ({workTypes.length})</button>
         <span className="ml-auto text-xs text-slate-500">
-          {msg ?? "Các mã này được ghi thẳng vào sheet PJ / 工種 của file xuất ra."}
+          {msg ?? (locale === "ja" ? "これらのコードは出力ファイルの PJ / 工種 シートにそのまま書き込まれます。" : "These codes are written directly into the PJ / Work type sheets of the export file.")}
         </span>
       </div>
       {tab === "pj"
@@ -38,6 +40,7 @@ function ProjectTable({ rows, onMsg }: { rows: P[]; onMsg: (m: string) => void }
   const [sort, setSort] = useState<SortState>({ key: "code", dir: "asc" });
   const blank: P = { id: "", systemCode: "", systemName: "", code: "", name: "", isActive: true };
   const [form, setForm] = useState<P>(blank);
+  const { t, locale } = useLocale();
 
   const filtered = useMemo(() => {
     const needle = q.trim();
@@ -62,7 +65,7 @@ function ProjectTable({ rows, onMsg }: { rows: P[]; onMsg: (m: string) => void }
         systemCode: form.systemCode, systemName: form.systemName,
         code: form.code, name: form.name, isActive: form.isActive,
       });
-      onMsg(res.ok ? res.message ?? "Đã lưu." : res.error ?? "Lỗi");
+      onMsg(res.ok ? res.message ?? (locale === "ja" ? "保存しました。" : "Saved.") : res.error ?? (locale === "ja" ? "エラー" : "Error"));
       if (res.ok) { setEdit(null); router.refresh(); }
     });
   }
@@ -71,10 +74,10 @@ function ProjectTable({ rows, onMsg }: { rows: P[]; onMsg: (m: string) => void }
     <>
       <div className="card overflow-hidden">
         <div className="card-header">
-          <h2 className="card-title">Danh sách project</h2>
+          <h2 className="card-title">{t("mastersProjectTitle")}</h2>
           <div className="flex items-center gap-2">
-            <input className="input w-64" placeholder="Tìm project…" value={q} onChange={(e) => setQ(e.target.value)} />
-            <button className="btn-primary btn-sm" onClick={() => open("new")}>+ Thêm project</button>
+            <input className="input w-64" placeholder={t("mastersProjectSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
+            <button className="btn-primary btn-sm" onClick={() => open("new")}>+ {t("add")}</button>
           </div>
         </div>
         <table className="data">
@@ -84,7 +87,7 @@ function ProjectTable({ rows, onMsg }: { rows: P[]; onMsg: (m: string) => void }
               <th><button onClick={() => setSort(toggleSort(sort, "systemName"))}>システム名称</button></th>
               <th><button onClick={() => setSort(toggleSort(sort, "code"))}>プロジェクトコード</button></th>
               <th><button onClick={() => setSort(toggleSort(sort, "name"))}>プロジェクト名称</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "isActive"))}>Trạng thái</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "isActive"))}>{t("membersStatus")}</button></th>
               <th></th>
             </tr>
           </thead>
@@ -96,15 +99,15 @@ function ProjectTable({ rows, onMsg }: { rows: P[]; onMsg: (m: string) => void }
                 <td className="num font-medium">{p.code}</td>
                 <td>{p.name}</td>
                 <td>{p.isActive
-                  ? <span className="badge bg-emerald-100 text-emerald-700">đang dùng</span>
-                  : <span className="badge bg-slate-200 text-slate-600">ẩn</span>}</td>
+                  ? <span className="badge bg-emerald-100 text-emerald-700">{t("active")}</span>
+                  : <span className="badge bg-slate-200 text-slate-600">{t("hidden")}</span>}</td>
                 <td className="text-right">
-                  <button className="btn-ghost btn-sm" onClick={() => open(p)}>Sửa</button>
+                  <button className="btn-ghost btn-sm" onClick={() => open(p)}>{t("edit")}</button>
                 </td>
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={6} className="py-8 text-center text-slate-400">Không có project nào khớp bộ lọc.</td></tr>
+              <tr><td colSpan={6} className="py-8 text-center text-slate-400">{t("noData")}</td></tr>
             )}
           </tbody>
         </table>
@@ -113,8 +116,8 @@ function ProjectTable({ rows, onMsg }: { rows: P[]; onMsg: (m: string) => void }
       {edit && (
         <div className="card">
           <div className="card-header">
-            <h2 className="card-title">{edit === "new" ? "Thêm project" : `Sửa: ${form.name}`}</h2>
-            <button className="btn-ghost btn-sm" onClick={() => setEdit(null)}>Đóng</button>
+            <h2 className="card-title">{edit === "new" ? `${t("add")} ${locale === "ja" ? "PJ" : "project"}` : `${t("edit")}: ${form.name}`}</h2>
+            <button className="btn-ghost btn-sm" onClick={() => setEdit(null)}>{t("close")}</button>
           </div>
           <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
             <F l="システムコード"><input className="input num" value={form.systemCode}
@@ -125,16 +128,16 @@ function ProjectTable({ rows, onMsg }: { rows: P[]; onMsg: (m: string) => void }
               onChange={(e) => setForm({ ...form, code: e.target.value })} /></F>
             <F l="プロジェクト名称 *"><input className="input" value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })} /></F>
-            <F l="Trạng thái">
+            <F l={t("membersStatus")}>
               <select className="select" value={form.isActive ? "1" : "0"}
                       onChange={(e) => setForm({ ...form, isActive: e.target.value === "1" })}>
-                <option value="1">Đang dùng</option><option value="0">Ẩn khỏi danh sách chọn</option>
+                <option value="1">{t("active")}</option><option value="0">{t("hidden")}</option>
               </select>
             </F>
           </div>
           <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
-            <button className="btn-secondary" onClick={() => setEdit(null)}>Huỷ</button>
-            <button className="btn-primary" onClick={save} disabled={busy}>Lưu</button>
+            <button className="btn-secondary" onClick={() => setEdit(null)}>{t("cancel")}</button>
+            <button className="btn-primary" onClick={save} disabled={busy}>{t("save")}</button>
           </div>
         </div>
       )}
@@ -150,6 +153,7 @@ function WorkTypeTable({ rows, onMsg }: { rows: W[]; onMsg: (m: string) => void 
   const [busy, startTransition] = useTransition();
   const blank: W = { id: "", code: "", name: "", category: "", note: "", isActive: true };
   const [form, setForm] = useState<W>(blank);
+  const { t, locale } = useLocale();
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -171,7 +175,7 @@ function WorkTypeTable({ rows, onMsg }: { rows: W[]; onMsg: (m: string) => void 
         category: form.category || form.name.split("：")[0],
         note: form.note, isActive: form.isActive,
       });
-      onMsg(res.ok ? res.message ?? "Đã lưu." : res.error ?? "Lỗi");
+      onMsg(res.ok ? res.message ?? (locale === "ja" ? "保存しました。" : "Saved.") : res.error ?? (locale === "ja" ? "エラー" : "Error"));
       if (res.ok) { setEdit(null); router.refresh(); }
     });
   }
@@ -180,11 +184,11 @@ function WorkTypeTable({ rows, onMsg }: { rows: W[]; onMsg: (m: string) => void 
     <>
       <div className="card overflow-hidden">
         <div className="card-header">
-          <h2 className="card-title">Danh sách 工種</h2>
+          <h2 className="card-title">{t("mastersWorkTypeTitle")}</h2>
           <div className="flex items-center gap-2">
-            <input className="input w-64" placeholder="Tìm theo mã hoặc tên…"
+            <input className="input w-64" placeholder={t("mastersWorkTypeSearchPlaceholder")}
                    value={q} onChange={(e) => setQ(e.target.value)} />
-            <button className="btn-primary btn-sm" onClick={() => open("new")}>+ Thêm 工種</button>
+            <button className="btn-primary btn-sm" onClick={() => open("new")}>+ {t("add")}</button>
           </div>
         </div>
         <div className="max-h-[640px] overflow-y-auto">
@@ -195,7 +199,7 @@ function WorkTypeTable({ rows, onMsg }: { rows: W[]; onMsg: (m: string) => void 
                 <th><button onClick={() => setSort(toggleSort(sort, "name"))}>工種</button></th>
                 <th><button onClick={() => setSort(toggleSort(sort, "category"))}>Nhóm</button></th>
                 <th>補足説明</th>
-                <th><button onClick={() => setSort(toggleSort(sort, "isActive"))}>Trạng thái</button></th>
+                <th><button onClick={() => setSort(toggleSort(sort, "isActive"))}>{t("membersStatus")}</button></th>
               </tr>
             </thead>
             <tbody>
@@ -208,15 +212,15 @@ function WorkTypeTable({ rows, onMsg }: { rows: W[]; onMsg: (m: string) => void 
                   <td>
                     <div className="flex items-center justify-between gap-2">
                       <span>{w.isActive
-                        ? <span className="badge bg-emerald-100 text-emerald-700">đang dùng</span>
-                        : <span className="badge bg-slate-200 text-slate-600">ẩn</span>}</span>
-                      <button className="btn-ghost btn-sm" onClick={() => open(w)}>Sửa</button>
+                        ? <span className="badge bg-emerald-100 text-emerald-700">{t("active")}</span>
+                        : <span className="badge bg-slate-200 text-slate-600">{t("hidden")}</span>}</span>
+                      <button className="btn-ghost btn-sm" onClick={() => open(w)}>{t("edit")}</button>
                     </div>
                   </td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan={5} className="py-8 text-center text-slate-400">Không có 工種 nào khớp bộ lọc.</td></tr>
+                <tr><td colSpan={5} className="py-8 text-center text-slate-400">{t("noData")}</td></tr>
               )}
             </tbody>
           </table>
@@ -226,20 +230,20 @@ function WorkTypeTable({ rows, onMsg }: { rows: W[]; onMsg: (m: string) => void 
       {edit && (
         <div className="card">
           <div className="card-header">
-            <h2 className="card-title">{edit === "new" ? "Thêm 工種" : `Sửa: ${form.name}`}</h2>
-            <button className="btn-ghost btn-sm" onClick={() => setEdit(null)}>Đóng</button>
+            <h2 className="card-title">{edit === "new" ? `${t("add")} 工種` : `${t("edit")}: ${form.name}`}</h2>
+            <button className="btn-ghost btn-sm" onClick={() => setEdit(null)}>{t("close")}</button>
           </div>
           <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
             <F l="CD *"><input className="input num" value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value })} /></F>
             <F l="工種 *"><input className="input" value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })} /></F>
-            <F l="Nhóm"><input className="input" value={form.category} placeholder="tự lấy phần trước dấu ："
+            <F l={locale === "ja" ? "分類" : "Category"}><input className="input" value={form.category} placeholder={locale === "ja" ? "： の前を自動使用" : "auto from text before ："}
               onChange={(e) => setForm({ ...form, category: e.target.value })} /></F>
-            <F l="Trạng thái">
+            <F l={t("membersStatus")}>
               <select className="select" value={form.isActive ? "1" : "0"}
                       onChange={(e) => setForm({ ...form, isActive: e.target.value === "1" })}>
-                <option value="1">Đang dùng</option><option value="0">Ẩn</option>
+                <option value="1">{t("active")}</option><option value="0">{t("hidden")}</option>
               </select>
             </F>
             <div className="sm:col-span-2 lg:col-span-4">
@@ -248,12 +252,10 @@ function WorkTypeTable({ rows, onMsg }: { rows: W[]; onMsg: (m: string) => void 
             </div>
           </div>
           <div className="flex items-center gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs text-slate-500">
-              Lưu ý: công thức trong template chỉ dò 82 dòng 工種 đầu tiên. Nên sửa mã có sẵn thay vì thêm mới.
-            </p>
+            <p className="text-xs text-slate-500">{locale === "ja" ? "テンプレートの式は最初の82行の工種だけを参照します。新規追加より既存コードの修正を推奨します。" : "The template formulas only reference the first 82 work-type rows. Prefer editing existing codes instead of adding new ones."}</p>
             <div className="ml-auto flex gap-2">
-              <button className="btn-secondary" onClick={() => setEdit(null)}>Huỷ</button>
-              <button className="btn-primary" onClick={save} disabled={busy}>Lưu</button>
+              <button className="btn-secondary" onClick={() => setEdit(null)}>{t("cancel")}</button>
+              <button className="btn-primary" onClick={save} disabled={busy}>{t("save")}</button>
             </div>
           </div>
         </div>

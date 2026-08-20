@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import type { Project, WorkType } from "@/db/schema";
 import type { MonthData, DayData } from "@/lib/period";
-import { WEEKDAY_VI, todayParts, ymd } from "@/lib/dates";
+import { WEEKDAY_VI, WEEKDAY_JA, todayParts, ymd } from "@/lib/dates";
 import {
   saveDayAction, copyDayAction, clearDayAction,
   submitMonthAction, withdrawMonthAction, fillWorkdaysAction,
@@ -12,6 +12,7 @@ import DayEditor, { type DayDraft, type DraftEntry } from "./DayEditor";
 import BudgetBar from "@/components/BudgetBar";
 import StatusBadge from "@/components/StatusBadge";
 import MonthNav from "@/components/MonthNav";
+import { useLocale } from "@/components/LocaleProvider";
 
 function toDraft(day: DayData): DayDraft {
   return {
@@ -40,6 +41,7 @@ export default function TimesheetEditor({
   workTypes: WorkType[];
 }) {
   const readOnly = data.locked;
+  const { t, locale } = useLocale();
   const today = todayParts();
 
   const initialDay = useMemo(() => {
@@ -88,7 +90,7 @@ export default function TimesheetEditor({
       setTimeout(() => setSaveState((s) => (s === "saved" ? "idle" : s)), 1600);
     } else {
       setSaveState("error");
-      setErrorMsg(res.error ?? "Lưu không thành công");
+      setErrorMsg(res.error ?? (locale === "ja" ? "保存に失敗しました。" : "Save failed"));
     }
   }, [data.year, data.month]);
 
@@ -157,7 +159,7 @@ export default function TimesheetEditor({
   }
 
   async function handleClear() {
-    if (!confirm("Xoá toàn bộ dữ liệu của ngày này?")) return;
+    if (!confirm(locale === "ja" ? "この日のデータをすべて削除しますか？" : "Delete all data for this day?")) return;
     setDrafts((p) => ({
       ...p,
       [selected]: { startMin: null, endMin: null, breakMin: 60, dayType: "WORK", leaveNote: null, remark: null, entries: [] },
@@ -204,7 +206,7 @@ export default function TimesheetEditor({
 
       <div className="card">
         <div className="card-header">
-          <h2 className="card-title">Budget theo project — {data.year}年{String(data.month).padStart(2, "0")}月</h2>
+          <h2 className="card-title">{locale === "ja" ? "プロジェクト別予算" : "Project budget"} — {data.year}年{String(data.month).padStart(2, "0")}月</h2>
           <span className="text-xs text-slate-500 num">
             Tổng {liveTotals.total.toFixed(1)}h / {data.totalBudget.toFixed(1)}h
           </span>
@@ -212,7 +214,7 @@ export default function TimesheetEditor({
         <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3">
           {budgetRows.length === 0 && (
             <p className="text-sm text-slate-400">
-              Quản trị viên chưa set budget cho tháng này.
+              {locale === "ja" ? "この月の予算はまだ設定されていません。" : "No budget has been set for this month."}
             </p>
           )}
           {budgetRows.map((b) => (
@@ -243,25 +245,26 @@ function Toolbar({
   errorMsg: string | null;
   onBeforeAction: () => Promise<void>;
 }) {
+  const { t, locale } = useLocale();
   const [note, setNote] = useState(data.report.memberNote ?? "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [showFill, setShowFill] = useState(false);
 
   async function submit() {
-    if (!confirm("Nộp timesheet tháng này cho quản lý? Sau khi nộp bạn sẽ không sửa được cho tới khi thu hồi.")) return;
+    if (!confirm(locale === "ja" ? "この月を管理者へ提出しますか？提出後は取り消すまで編集できません。" : "Submit this month to management? After submission you can't edit until you withdraw it.")) return;
     setBusy(true);
     await onBeforeAction();
     const res = await submitMonthAction(data.year, data.month, note);
     setBusy(false);
-    setMsg(res.ok ? "Đã nộp." : res.error ?? "Lỗi");
+    setMsg(res.ok ? (locale === "ja" ? "提出しました。" : "Submitted.") : res.error ?? (locale === "ja" ? "エラー" : "Error"));
   }
 
   async function withdraw() {
     setBusy(true);
     const res = await withdrawMonthAction(data.year, data.month);
     setBusy(false);
-    setMsg(res.ok ? "Đã thu hồi, bạn có thể sửa tiếp." : res.error ?? "Lỗi");
+    setMsg(res.ok ? (locale === "ja" ? "提出を取り消しました。再編集できます。" : "Withdrawn. You can edit again.") : res.error ?? (locale === "ja" ? "エラー" : "Error"));
   }
 
   const overBudget = data.totalBudget > 0 && liveTotal > data.totalBudget;
@@ -272,17 +275,17 @@ function Toolbar({
         <MonthNav year={data.year} month={data.month} />
 
         <div className="flex items-baseline gap-1.5 rounded-md bg-slate-50 px-3 py-1.5">
-          <span className="text-xs text-slate-500">Tổng giờ</span>
+          <span className="text-xs text-slate-500">{t("timesheetHours")}</span>
           <span className={`text-base font-semibold num ${overBudget ? "text-rose-600" : "text-slate-800"}`}>
             {liveTotal.toFixed(1)}
           </span>
           <span className="text-xs text-slate-400 num">
-            / {data.totalBudget > 0 ? `${data.totalBudget.toFixed(1)}h` : "chưa set budget"}
+            / {data.totalBudget > 0 ? `${data.totalBudget.toFixed(1)}h` : (locale === "ja" ? "未設定" : "not set")}
           </span>
         </div>
 
         <div className="flex items-baseline gap-1.5 rounded-md bg-slate-50 px-3 py-1.5">
-          <span className="text-xs text-slate-500">所定日数</span>
+          <span className="text-xs text-slate-500">{t("dashboardWorkingDays")}</span>
           <span className="text-sm font-semibold text-slate-700 num">{data.workingDays}</span>
         </div>
 
@@ -292,29 +295,29 @@ function Toolbar({
           <span className={`text-xs ${
             saveState === "error" ? "text-rose-600"
             : saveState === "saving" ? "text-slate-400" : "text-emerald-600"}`}>
-            {saveState === "saving" ? "Đang lưu…"
-              : saveState === "saved" ? "Đã lưu"
-              : saveState === "error" ? (errorMsg ?? "Lỗi lưu") : ""}
+            {saveState === "saving" ? t("saving")
+              : saveState === "saved" ? (locale === "ja" ? "保存しました" : "Saved")
+              : saveState === "error" ? (errorMsg ?? (locale === "ja" ? "保存エラー" : "Save error")) : ""}
           </span>
 
           {!data.locked && (
             <button className="btn-secondary btn-sm" onClick={() => setShowFill((v) => !v)}>
-              Điền nhanh cả tháng
+              {locale === "ja" ? "月をまとめて入力" : "Quick fill month"}
             </button>
           )}
 
           {data.report.status === "SUBMITTED" && (
             <button className="btn-secondary" onClick={withdraw} disabled={busy}>
-              Thu hồi
+              {locale === "ja" ? "提出取消" : "Withdraw"}
             </button>
           )}
           {(data.report.status === "DRAFT" || data.report.status === "REJECTED") && (
             <button className="btn-primary" onClick={submit} disabled={busy}>
-              {busy ? "Đang gửi…" : "Nộp tháng này"}
+              {busy ? t("loading") : t("timesheetSubmit")}
             </button>
           )}
           {data.report.status === "APPROVED" && (
-            <span className="text-xs text-emerald-600">Đã chốt sổ</span>
+            <span className="text-xs text-emerald-600">{t("statusClosed")}</span>
           )}
         </div>
       </div>
@@ -323,14 +326,14 @@ function Toolbar({
 
       {(data.report.status === "DRAFT" || data.report.status === "REJECTED") && (
         <div className="border-t border-slate-200 px-4 py-2">
-          <input className="input" placeholder="Ghi chú gửi kèm cho quản lý (không bắt buộc)"
+             <input className="input" placeholder={locale === "ja" ? "管理者向けのコメント（任意）" : "Note for management (optional)"}
                  value={note} onChange={(e) => setNote(e.target.value)} />
         </div>
       )}
 
       {data.report.status === "REJECTED" && data.report.reviewNote && (
         <div className="border-t border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700">
-          <strong>Quản lý trả lại:</strong> {data.report.reviewNote}
+          <strong>{locale === "ja" ? "差戻し理由:" : "Rejection note:"}</strong> {data.report.reviewNote}
         </div>
       )}
       {msg && <div className="border-t border-slate-200 px-4 py-2 text-sm text-slate-600">{msg}</div>}
@@ -339,6 +342,7 @@ function Toolbar({
 }
 
 function FillPanel({ data, onDone }: { data: MonthData; onDone: () => void }) {
+  const { t, locale } = useLocale();
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("18:00");
   const [brk, setBrk] = useState(60);
@@ -353,31 +357,31 @@ function FillPanel({ data, onDone }: { data: MonthData; onDone: () => void }) {
     };
     const res = await fillWorkdaysAction(data.year, data.month, toMin(start), toMin(end), brk);
     setBusy(false);
-    setMsg(res.ok ? `Đã điền ${res.filled ?? 0} ngày còn trống.` : res.error ?? "Lỗi");
+    setMsg(res.ok ? (locale === "ja" ? `${res.filled ?? 0}日分を入力しました。` : `Filled ${res.filled ?? 0} days.`) : res.error ?? (locale === "ja" ? "エラー" : "Error"));
     if (res.ok) setTimeout(onDone, 1200);
   }
 
   return (
     <div className="flex flex-wrap items-end gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3">
       <div>
-        <label className="label">始業</label>
+        <label className="label">{t("timesheetStart")}</label>
         <input type="time" className="input num w-28" value={start} onChange={(e) => setStart(e.target.value)} />
       </div>
       <div>
-        <label className="label">終業</label>
+        <label className="label">{t("timesheetEnd")}</label>
         <input type="time" className="input num w-28" value={end} onChange={(e) => setEnd(e.target.value)} />
       </div>
       <div>
-        <label className="label">休憩 (phút)</label>
+        <label className="label">{t("timesheetBreak")}</label>
         <input type="number" className="input num w-24" value={brk}
                onChange={(e) => setBrk(Number(e.target.value) || 0)} />
       </div>
       <button className="btn-primary" onClick={run} disabled={busy}>
-        {busy ? "Đang điền…" : "Điền cho ngày T2–T6 còn trống"}
+        {busy ? t("loading") : (locale === "ja" ? "平日の未入力日に一括入力" : "Fill empty Mon-Fri days")}
       </button>
       {msg && <span className="text-sm text-slate-600">{msg}</span>}
       <p className="w-full text-xs text-slate-500">
-        Chỉ điền giờ vào/ra cho những ngày chưa có dữ liệu. Không tạo dòng công việc, không ghi đè ngày đã nhập.
+        {locale === "ja" ? "開始/終了時刻だけを未入力日に入れます。作業明細は作成せず、既存データは上書きしません。" : "Only fills start/end times for empty days. It does not create work lines or overwrite existing data."}
       </p>
     </div>
   );
@@ -393,14 +397,15 @@ function DayList({
   selected: number;
   onSelect: (d: number) => void;
 }) {
+  const { locale } = useLocale();
   const today = todayParts();
   const isCurrentMonth = today.year === data.year && today.month === data.month;
 
   return (
     <div className="card overflow-hidden">
       <div className="card-header">
-        <h2 className="card-title">Ngày trong tháng</h2>
-        <span className="text-xs text-slate-400">giờ đã nhập</span>
+        <h2 className="card-title">{locale === "ja" ? "月内の日付" : "Days in month"}</h2>
+        <span className="text-xs text-slate-400">{locale === "ja" ? "入力済み時間" : "entered hours"}</span>
       </div>
       <div className="max-h-[600px] overflow-y-auto">
         {data.days.map((d) => {
@@ -425,9 +430,9 @@ function DayList({
                 {String(d.day).padStart(2, "0")}
               </span>
               <span className={`w-6 shrink-0 text-xs ${off ? "text-rose-400" : "text-slate-400"}`}>
-                {WEEKDAY_VI[d.weekday]}
+                {locale === "ja" ? WEEKDAY_JA[d.weekday] : WEEKDAY_VI[d.weekday]}
               </span>
-              {isToday && <span className="badge bg-brand-600 px-1.5 py-0 text-[10px] text-white">nay</span>}
+              {isToday && <span className="badge bg-brand-600 px-1.5 py-0 text-[10px] text-white">{locale === "ja" ? "今日" : "today"}</span>}
               <span className="ml-auto flex items-center gap-2">
                 {draft?.leaveNote && (
                   <span className="max-w-[70px] truncate text-[11px] text-amber-600">{draft.leaveNote}</span>

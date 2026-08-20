@@ -7,6 +7,7 @@ import {
   setMonthSettingAction, addHolidayAction, removeHolidayAction, updateOrgSettingAction,
 } from "@/actions/admin";
 import { BILLING_CURRENCIES, currencySymbol, type BillingCurrency } from "@/lib/currency";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function SettingsPanel({
   year, month, workingDays, suggestedWorkingDays, daysInMonth, org, holidays,
@@ -23,6 +24,7 @@ export default function SettingsPanel({
   holidays: { id: string; date: string; name: string }[];
 }) {
   const router = useRouter();
+  const { t, locale } = useLocale();
   const [wd, setWd] = useState(workingDays);
   const [orgForm, setOrgForm] = useState(org);
   const [hDate, setHDate] = useState(`${year}-${String(month).padStart(2, "0")}-01`);
@@ -33,7 +35,7 @@ export default function SettingsPanel({
   const run = (fn: () => Promise<{ ok: boolean; error?: string; message?: string }>) =>
     startTransition(async () => {
       const res = await fn();
-      setMsg(res.ok ? res.message ?? "Đã lưu." : res.error ?? "Lỗi");
+      setMsg(res.ok ? res.message ?? (locale === "ja" ? "保存しました。" : "Saved.") : res.error ?? (locale === "ja" ? "エラー" : "Error"));
       router.refresh();
     });
 
@@ -44,15 +46,15 @@ export default function SettingsPanel({
     <div className="space-y-4">
       <div className="card flex flex-wrap items-center gap-3 px-4 py-3">
         <MonthNav year={year} month={month} />
-        <h1 className="text-sm font-semibold text-slate-800">Cấu hình</h1>
+        <h1 className="text-sm font-semibold text-slate-800">{t("settingsTitle")}</h1>
         {msg && <span className="ml-auto text-xs text-slate-500">{msg}</span>}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="card">
           <div className="card-header">
-            <h2 className="card-title">所定日数 — Số ngày làm việc quy định</h2>
-            <span className="text-xs text-slate-400">ghi vào 月間集計シート!X4</span>
+            <h2 className="card-title">{t("settingsWorkingDaysTitle")}</h2>
+            <span className="text-xs text-slate-400">{t("settingsWorkingDaysSub")}</span>
           </div>
           <div className="space-y-3 p-4">
             <div className="flex items-end gap-3">
@@ -62,20 +64,24 @@ export default function SettingsPanel({
                        value={wd} onChange={(e) => setWd(Number(e.target.value) || 0)} />
               </div>
               <div className="rounded-md bg-slate-50 px-3 py-2 text-sm">
-                <div className="text-xs text-slate-500">所定時間 = 所定日数 × 7.5</div>
+                <div className="text-xs text-slate-500">{t("settingsWorkingDaysHint")}</div>
                 <div className="font-semibold num text-slate-700">{(wd * 7.5).toFixed(1)} h</div>
               </div>
               <button className="btn-primary" disabled={busy}
                       onClick={() => run(() => setMonthSettingAction(year, month, wd))}>
-                Lưu
+                {t("save")}
               </button>
             </div>
             <p className="text-xs text-slate-500">
-              Tháng này có {daysInMonth} ngày, trong đó {suggestedWorkingDays} ngày từ Thứ 2–Thứ 6
-              (chưa trừ ngày lễ). Gợi ý: {Math.max(suggestedWorkingDays - monthHolidays.length, 0)} ngày.
+              {locale === "ja"
+                ? `今月は${daysInMonth}日あり、そのうち${suggestedWorkingDays}日は月〜金です（祝日未除外）。`
+                : `This month has ${daysInMonth} days, including ${suggestedWorkingDays} weekdays (before holidays).`} 
+              {locale === "ja"
+                ? `推奨値: ${Math.max(suggestedWorkingDays - monthHolidays.length, 0)}日。`
+                : `Suggested: ${Math.max(suggestedWorkingDays - monthHolidays.length, 0)} days.`}
               <button className="ml-2 text-brand-600 underline"
                       onClick={() => setWd(Math.max(suggestedWorkingDays - monthHolidays.length, 0))}>
-                dùng gợi ý
+                {t("settingsUseSuggestion")}
               </button>
             </p>
           </div>
@@ -83,7 +89,7 @@ export default function SettingsPanel({
 
         <div className="card">
           <div className="card-header">
-            <h2 className="card-title">就業先 — Thông tin in trên 勤務報告書</h2>
+            <h2 className="card-title">{t("settingsOrgTitle")}</h2>
           </div>
           <div className="grid gap-3 p-4">
             <F l="会社名"><input className="input" value={orgForm.clientCompany}
@@ -94,7 +100,7 @@ export default function SettingsPanel({
               onChange={(e) => setOrgForm({ ...orgForm, workplace: e.target.value })} /></F>
             <F l="就業した業務"><input className="input" value={orgForm.workName}
               onChange={(e) => setOrgForm({ ...orgForm, workName: e.target.value })} /></F>
-            <F l="Đơn vị tiền tệ cho đơn giá">
+            <F l={t("settingsCurrency")}>
               <select
                 className="select"
                 value={orgForm.billingCurrency}
@@ -107,7 +113,7 @@ export default function SettingsPanel({
             </F>
             <div className="flex justify-end">
               <button className="btn-primary" disabled={busy}
-                      onClick={() => run(() => updateOrgSettingAction(orgForm))}>Lưu</button>
+                      onClick={() => run(() => updateOrgSettingAction(orgForm))}>{t("save")}</button>
             </div>
           </div>
         </div>
@@ -115,24 +121,23 @@ export default function SettingsPanel({
 
       <div className="card">
         <div className="card-header">
-          <h2 className="card-title">公休 — Ngày nghỉ lễ năm {year}</h2>
+          <h2 className="card-title">{t("settingsHolidaysTitle", { year })}</h2>
           <span className="text-xs text-slate-400">
-            Ngày lễ sẽ được đánh dấu 公休 ở cột 休日 của 勤務報告書
+            {t("settingsHolidaysNote")}
           </span>
         </div>
         <div className="px-4 pt-3 text-xs text-slate-500">
-          Mặc định hệ thống tính nghỉ Thứ 7/CN. Danh sách ngày lễ Nhật của năm đang xem được nạp tự động;
-          quản trị vẫn có thể thêm ngày nghỉ riêng bên dưới.
+          {t("settingsWeekendNote")}
         </div>
         <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 p-4">
           <div>
-            <label className="label">Ngày</label>
+            <label className="label">日付</label>
             <input type="date" className="input num w-44" value={hDate}
                    onChange={(e) => setHDate(e.target.value)} />
           </div>
           <div className="flex-1 min-w-[200px]">
-            <label className="label">Tên ngày lễ</label>
-            <input className="input" placeholder="vd: 海の日" value={hName}
+            <label className="label">祝日名</label>
+            <input className="input" placeholder="例: 海の日" value={hName}
                    onChange={(e) => setHName(e.target.value)} />
           </div>
           <button className="btn-primary" disabled={busy}
@@ -141,12 +146,12 @@ export default function SettingsPanel({
                     if (r.ok) setHName("");
                     return r;
                   })}>
-            Thêm ngày nghỉ
+            {t("settingsAddHoliday")}
           </button>
         </div>
         <div className="flex flex-wrap gap-2 p-4">
           {holidays.length === 0 && (
-            <p className="text-sm text-slate-400">Chưa khai báo ngày nghỉ nào cho năm {year}.</p>
+            <p className="text-sm text-slate-400">{t("settingsNoHoliday", { year })}</p>
           )}
           {holidays.map((h) => (
             <span key={h.id}

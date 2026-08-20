@@ -8,6 +8,7 @@ import type { OverviewRow } from "@/lib/adminData";
 import { calcBillingByProjects } from "@/lib/billing";
 import { currencySymbol, type BillingCurrency } from "@/lib/currency";
 import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableUi";
+import { useLocale } from "@/components/LocaleProvider";
 
 export default function ExportPanel({
   year, month, rows, workingDays, selectedPeriods, selectedProjectIds, projects, billingCurrency,
@@ -23,6 +24,7 @@ export default function ExportPanel({
 }) {
   const moneyUnit = currencySymbol(billingCurrency);
   const router = useRouter();
+  const { t, locale } = useLocale();
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -92,8 +94,8 @@ export default function ExportPanel({
     try {
       const res = await fetch(url);
       if (!res.ok) {
-        const j = await res.json().catch(() => ({ error: "Lỗi không xác định" }));
-        setMsg(j.error ?? "Xuất file thất bại");
+        const j = await res.json().catch(() => ({ error: locale === "ja" ? "不明なエラー" : "Unknown error" }));
+        setMsg(j.error ?? (locale === "ja" ? "ファイル出力に失敗しました" : "Export failed"));
         return;
       }
       const warnHeader = res.headers.get("X-Export-Warnings");
@@ -109,7 +111,7 @@ export default function ExportPanel({
 
       if (warnHeader) {
         const warnings: string[] = JSON.parse(decodeURIComponent(warnHeader));
-        if (warnings.length) setMsg("Cảnh báo: " + warnings.join(" · "));
+        if (warnings.length) setMsg(`${locale === "ja" ? "警告: " : "Warnings: "}${warnings.join(" · ")}`);
       }
     } finally {
       setBusy(null);
@@ -118,7 +120,7 @@ export default function ExportPanel({
 
   function applyFilters() {
     if (months.length === 0) {
-      setMsg("Vui lòng chọn ít nhất 1 tháng.");
+      setMsg(locale === "ja" ? "少なくとも1か月を選択してください。" : "Please select at least one month.");
       return;
     }
     const qs = new URLSearchParams();
@@ -145,11 +147,11 @@ export default function ExportPanel({
   return (
     <div className="space-y-4">
       <div className="card flex items-center gap-3 px-4 py-3">
-        <button className="btn-secondary" onClick={() => setFilterOpen(true)}>Filter</button>
+        <button className="btn-secondary" onClick={() => setFilterOpen(true)}>{t("filterButton")}</button>
         <span className="text-sm text-slate-500">
-          Đang xem: {months.length} tháng · {projectId ? "1 project" : "tất cả project"}
+          {locale === "ja" ? `表示中: ${months.length}か月 · ${projectId ? "1 PJ" : "全PJ"}` : `Showing: ${months.length} months · ${projectId ? "1 project" : "all projects"}`}
         </span>
-        <input className="input ml-auto w-64" placeholder="Tìm member…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input className="input ml-auto w-64" placeholder={t("memberSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
       {filterOpen && (
@@ -157,19 +159,19 @@ export default function ExportPanel({
           <div className="fixed inset-0 z-40 bg-slate-900/40" onClick={() => setFilterOpen(false)} />
           <aside className="fixed inset-y-0 left-0 z-50 w-full max-w-sm overflow-y-auto border-r border-slate-200 bg-white p-4 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-800">Điều kiện report</h2>
-              <button className="btn-ghost btn-sm" onClick={() => setFilterOpen(false)}>Đóng</button>
+              <h2 className="text-sm font-semibold text-slate-800">{locale === "ja" ? "出力条件" : "Report filters"}</h2>
+              <button className="btn-ghost btn-sm" onClick={() => setFilterOpen(false)}>{t("close")}</button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <div className="mb-2 text-xs font-medium text-slate-500">Filter dự án</div>
+                <div className="mb-2 text-xs font-medium text-slate-500">{t("projectSelection")}</div>
                 <select
                   className="select"
                   value={projectId}
                   onChange={(e) => setProjectId(e.target.value)}
                 >
-                  <option value="">Tất cả project</option>
+                  <option value="">{t("all")}</option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
                   ))}
@@ -177,7 +179,7 @@ export default function ExportPanel({
               </div>
 
               <div>
-                <div className="mb-2 text-xs font-medium text-slate-500">Chọn 1 hoặc nhiều tháng (6 tháng gần nhất)</div>
+                <div className="mb-2 text-xs font-medium text-slate-500">{t("exportRecentMonths")}</div>
                 <div className="grid grid-cols-2 gap-2 rounded-md border border-slate-200 p-2">
                   {recentMonthChoices.map((m) => (
                     <label key={m} className="flex items-center gap-2 text-sm text-slate-700">
@@ -187,13 +189,13 @@ export default function ExportPanel({
                   ))}
                 </div>
                 <button className="btn-ghost btn-sm mt-2" onClick={() => setMonthPopupOpen(true)}>
-                  Chọn thêm tháng...
+                  {t("exportMoreMonths")}
                 </button>
               </div>
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
-              <button className="btn-primary" onClick={applyFilters}>Áp dụng bộ lọc</button>
+              <button className="btn-primary" onClick={applyFilters}>{t("filterButton")}</button>
               <button
                 className="btn-secondary"
                 onClick={() => {
@@ -213,8 +215,8 @@ export default function ExportPanel({
           <div className="fixed inset-0 z-[60] bg-slate-900/50" onClick={() => setMonthPopupOpen(false)} />
           <div className="fixed left-1/2 top-1/2 z-[70] w-[92vw] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-lg border border-slate-200 bg-white p-4 shadow-2xl">
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-800">Chọn thêm tháng</h3>
-              <button className="btn-ghost btn-sm" onClick={() => setMonthPopupOpen(false)}>Đóng</button>
+              <h3 className="text-sm font-semibold text-slate-800">{t("monthSelection")}</h3>
+              <button className="btn-ghost btn-sm" onClick={() => setMonthPopupOpen(false)}>{t("close")}</button>
             </div>
             <div className="grid max-h-80 grid-cols-2 gap-2 overflow-y-auto rounded-md border border-slate-200 p-2">
               {extendedMonthChoices.map((m) => (
@@ -225,7 +227,7 @@ export default function ExportPanel({
               ))}
             </div>
             <div className="mt-3 flex justify-end">
-              <button className="btn-primary" onClick={() => setMonthPopupOpen(false)}>Xong</button>
+              <button className="btn-primary" onClick={() => setMonthPopupOpen(false)}>{locale === "ja" ? "完了" : "Done"}</button>
             </div>
           </div>
         </>
@@ -233,25 +235,23 @@ export default function ExportPanel({
 
       <div className="card flex flex-wrap items-center gap-3 px-4 py-3">
         <MonthNav year={year} month={month} />
-        <span className="text-sm text-slate-500">
-          Đã chốt {approved.length}/{rows.length} · 所定日数 {workingDays}
-        </span>
+          <span className="text-sm text-slate-500">{locale === "ja" ? `承認済み ${approved.length}/${rows.length} · 所定日数 ${workingDays}` : `Approved ${approved.length}/${rows.length} · working days ${workingDays}`}</span>
         <div className="ml-auto flex gap-2">
           <button className="btn-secondary" disabled={busy !== null || withData.length === 0}
                   onClick={() => download(billingUrl("all"), "billing-all")}>
-            {busy === "billing-all" ? "Đang tạo…" : "Tải Billing (all)"}
+            {busy === "billing-all" ? t("loading") : `${t("downloadBilling")} (${t("all")})`}
           </button>
           <button className="btn-secondary" disabled={busy !== null || approved.length === 0}
                   onClick={() => download(billingUrl("approved"), "billing-approved")}>
-            {busy === "billing-approved" ? "Đang tạo…" : "Tải Billing (approved)"}
+            {busy === "billing-approved" ? t("loading") : `${t("downloadBilling")} (${t("statusApproved")})`}
           </button>
           <button className="btn-secondary" disabled={busy !== null || withData.length === 0 || !isWeeklyCompatible}
                   onClick={() => download(`/api/export?year=${year}&month=${month}&scope=all`, "all")}>
-            {busy === "all" ? "Đang tạo…" : `Tải tất cả có dữ liệu (${withData.length})`}
+            {busy === "all" ? t("loading") : (locale === "ja" ? `データあり全件ダウンロード (${withData.length})` : `Download all with data (${withData.length})`)}
           </button>
           <button className="btn-primary" disabled={busy !== null || approved.length === 0 || !isWeeklyCompatible}
                   onClick={() => download(`/api/export?year=${year}&month=${month}&scope=approved`, "zip")}>
-            {busy === "zip" ? "Đang tạo…" : `Tải ZIP đã chốt (${approved.length})`}
+            {busy === "zip" ? t("loading") : (locale === "ja" ? `締め済みZIP (${approved.length})` : `Download approved ZIP (${approved.length})`)}
           </button>
         </div>
       </div>
@@ -262,7 +262,9 @@ export default function ExportPanel({
 
       {!isWeeklyCompatible && (
         <div className="card border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Chế độ nhiều tháng hoặc có filter project chỉ áp dụng cho Billing report. Nút xuất 週報 tuần sẽ chỉ hoạt động khi chọn đúng 1 tháng và không lọc project.
+          {locale === "ja"
+            ? "複数月またはPJフィルタはBilling report専用です。週報出力は1か月・PJ未指定のときのみ有効です。"
+            : "Multi-month or project filter only applies to Billing reports. Weekly report export works only for one month with no project filter."}
         </div>
       )}
 
@@ -270,21 +272,21 @@ export default function ExportPanel({
         <Metric label="Member có dữ liệu" value={String(withData.length)} />
         <Metric label="Dưới ngưỡng 140h*công số" value={String(totals.under)} tone={totals.under ? "warn" : "ok"} />
         <Metric label="Vượt ngưỡng 180h*công số" value={String(totals.over)} tone={totals.over ? "warn" : "ok"} />
-        <Metric label={`Tổng tiền điều chỉnh (${moneyUnit})`} value={totals.amount.toLocaleString("en-US")} />
+        <Metric label={`${locale === "ja" ? "調整金額" : "Adjustment total"} (${moneyUnit})`} value={totals.amount.toLocaleString(locale === "ja" ? "ja-JP" : "en-US")} />
       </div>
 
       <div className="card overflow-hidden">
         <div className="card-header">
-          <h2 className="card-title">Dashboard điều chỉnh theo rule 140/180</h2>
-          <span className="text-xs text-slate-400">adjustment = (max(0, hours-180*f) - max(0, 140*f-hours)) / 180 * đơn giá ({moneyUnit}/MM)</span>
+          <h2 className="card-title">{locale === "ja" ? "140/180ルールの調整ダッシュボード" : "140/180 adjustment dashboard"}</h2>
+          <span className="text-xs text-slate-400">adjustment = (max(0, hours-180*f) - max(0, 140*f-hours)) / 180 * {locale === "ja" ? "単価" : "unit price"} ({moneyUnit}/MM)</span>
         </div>
         <table className="data">
           <thead>
             <tr>
-              <th><button onClick={() => setBillingSort(toggleSort(billingSort, "fullName"))}>Member</button></th>
-              <th><button className="text-right" onClick={() => setBillingSort(toggleSort(billingSort, "usedHours"))}>Giờ</button></th><th className="text-right">Công số</th>
-              <th className="text-right">Lower</th><th className="text-right">Upper</th><th className="text-right">Giờ thiếu</th>
-              <th className="text-right">Giờ vượt</th><th className="text-right">Đơn giá TB ({moneyUnit})</th><th><button className="text-right" onClick={() => setBillingSort(toggleSort(billingSort, "amount"))}>Điều chỉnh ({moneyUnit})</button></th>
+              <th><button onClick={() => setBillingSort(toggleSort(billingSort, "fullName"))}>{t("membersTitle")}</button></th>
+              <th><button className="text-right" onClick={() => setBillingSort(toggleSort(billingSort, "usedHours"))}>{t("timesheetHours")}</button></th><th className="text-right">{t("membersFactor")}</th>
+              <th className="text-right">Lower</th><th className="text-right">Upper</th><th className="text-right">{locale === "ja" ? "不足" : "Short"}</th>
+              <th className="text-right">{locale === "ja" ? "超過" : "Over"}</th><th className="text-right">{locale === "ja" ? "平均単価" : "Avg price"} ({moneyUnit})</th><th><button className="text-right" onClick={() => setBillingSort(toggleSort(billingSort, "amount"))}>{locale === "ja" ? "調整額" : "Adjustment"} ({moneyUnit})</button></th>
             </tr>
           </thead>
           <tbody>
@@ -307,7 +309,7 @@ export default function ExportPanel({
               </tr>
             ))}
             {filteredBilling.length === 0 && (
-              <tr><td colSpan={9} className="py-8 text-center text-slate-400">Không có dữ liệu trong tháng này.</td></tr>
+              <tr><td colSpan={9} className="py-8 text-center text-slate-400">{t("noData")}</td></tr>
             )}
           </tbody>
         </table>
@@ -315,17 +317,15 @@ export default function ExportPanel({
 
       <div className="card overflow-hidden">
         <div className="card-header">
-          <h2 className="card-title">Danh sách file sẽ xuất</h2>
-          <span className="text-xs text-slate-400">
-            Mỗi file dùng đúng template 週報 gốc — mở bằng Excel là ra 月間集計 và 勤務報告書
-          </span>
+          <h2 className="card-title">{t("exportFilesTitle")}</h2>
+          <span className="text-xs text-slate-400">{t("exportFilesNote")}</span>
         </div>
         <table className="data">
           <thead>
             <tr>
-              <th><button onClick={() => setFileSort(toggleSort(fileSort, "fullName"))}>Thành viên</button></th><th>Tên file</th>
-              <th><button className="text-right" onClick={() => setFileSort(toggleSort(fileSort, "usedHours"))}>Giờ</button></th><th><button className="text-right" onClick={() => setFileSort(toggleSort(fileSort, "attendanceHours"))}>就業時間</button></th>
-              <th><button onClick={() => setFileSort(toggleSort(fileSort, "status"))}>Trạng thái</button></th><th></th>
+              <th><button onClick={() => setFileSort(toggleSort(fileSort, "fullName"))}>{t("membersTitle")}</button></th><th>{locale === "ja" ? "ファイル名" : "File name"}</th>
+              <th><button className="text-right" onClick={() => setFileSort(toggleSort(fileSort, "usedHours"))}>{t("timesheetHours")}</button></th><th><button className="text-right" onClick={() => setFileSort(toggleSort(fileSort, "attendanceHours"))}>{t("timesheetAttendance")}</button></th>
+              <th><button onClick={() => setFileSort(toggleSort(fileSort, "status"))}>{t("membersStatus")}</button></th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -342,21 +342,21 @@ export default function ExportPanel({
                   <td className="text-right">
                     <button className="btn-secondary btn-sm" disabled={busy !== null || empty || !isWeeklyCompatible}
                             onClick={() => download(`/api/export?year=${year}&month=${month}&user=${r.userId}`, r.userId)}>
-                      {busy === r.userId ? "…" : "Tải file"}
+                      {busy === r.userId ? "…" : t("downloadFile")}
                     </button>
                   </td>
                 </tr>
               );
             })}
             {filteredFiles.length === 0 && (
-              <tr><td colSpan={6} className="py-8 text-center text-slate-400">Không có file nào khớp bộ lọc.</td></tr>
+              <tr><td colSpan={6} className="py-8 text-center text-slate-400">{t("exportNoFiles")}</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
       <div className="card p-4 text-sm text-slate-600">
-        <h3 className="mb-2 font-semibold text-slate-700">Lưu ý khi gửi cho khách hàng</h3>
+        <h3 className="mb-2 font-semibold text-slate-700">{locale === "ja" ? "顧客送付時の注意" : "Notes before sending to the customer"}</h3>
         <ul className="list-inside list-disc space-y-1 text-slate-600">
           <li>File xuất ra giữ nguyên 100% format của template gốc: 6 sheet tuần, 月間集計シート, 勤務報告書 và các sheet master.</li>
           <li>App chỉ ghi vào ô nhập của 6 sheet tuần; 月間集計 và 勤務報告書 vẫn là công thức và tự tính khi mở bằng Excel.</li>

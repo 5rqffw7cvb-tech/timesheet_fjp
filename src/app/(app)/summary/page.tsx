@@ -3,12 +3,13 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/db";
 import { timeEntries, projects, workTypes } from "@/db/schema";
 import { loadMonth } from "@/lib/period";
-import { todayParts, ymd, daysInMonth, WEEKDAY_VI, minToHHMM, weekOfMonth } from "@/lib/dates";
+import { todayParts, ymd, daysInMonth, weekOfMonth } from "@/lib/dates";
 import MonthNav from "@/components/MonthNav";
 import StatusBadge from "@/components/StatusBadge";
-import BudgetBar from "@/components/BudgetBar";
 import DownloadButton from "./DownloadButton";
 import SummaryTables from "./SummaryTables";
+import { getLocale } from "@/lib/requestLocale";
+import { getMessage } from "@/lib/i18n";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export default async function SummaryPage({
   searchParams,
 }: { searchParams: Promise<{ year?: string; month?: string }> }) {
   const user = await requireUser();
+  const locale = await getLocale();
   const sp = await searchParams;
   const now = todayParts();
   const year = Number(sp.year) || now.year;
@@ -54,11 +56,11 @@ export default async function SummaryPage({
     <div className="space-y-4">
       <div className="card flex flex-wrap items-center gap-3 px-4 py-3">
         <MonthNav year={year} month={month} />
-        <Stat label="Tổng giờ công việc" value={`${data.totalHours.toFixed(1)}h`} />
-        <Stat label="就業時間 (giờ vào/ra)" value={`${attendanceTotal.toFixed(1)}h`} />
-        <Stat label="Chênh lệch" value={`${diff > 0 ? "+" : ""}${diff.toFixed(1)}h`}
+          <Stat label={getMessage(locale, "timesheetHours")} value={`${data.totalHours.toFixed(1)}h`} />
+          <Stat label={getMessage(locale, "timesheetAttendance")} value={`${attendanceTotal.toFixed(1)}h`} />
+          <Stat label={getMessage(locale, "timesheetDiff")} value={`${diff > 0 ? "+" : ""}${diff.toFixed(1)}h`}
               tone={Math.abs(diff) > 0.01 ? "warn" : "ok"} />
-        <Stat label="Budget" value={data.totalBudget ? `${data.totalBudget.toFixed(1)}h` : "—"} />
+          <Stat label={getMessage(locale, "budgetTitle")} value={data.totalBudget ? `${data.totalBudget.toFixed(1)}h` : "—"} />
         <StatusBadge status={data.report.status} />
         <div className="ml-auto">
           <DownloadButton year={year} month={month} userId={user.id} />
@@ -67,8 +69,9 @@ export default async function SummaryPage({
 
       {Math.abs(diff) > 0.01 && (
         <div className="card border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Tổng giờ các dòng công việc lệch {diff > 0 ? "+" : ""}{diff.toFixed(2)}h so với 就業時間 tính
-          từ giờ vào/ra. Quản lý sẽ nhìn thấy chênh lệch này khi duyệt — nên rà lại trước khi nộp.
+          {locale === "ja"
+            ? `作業明細合計が就業時間より ${diff > 0 ? "+" : ""}${diff.toFixed(2)}h ずれています。提出前に確認してください。`
+            : `Work-line totals differ from attendance by ${diff > 0 ? "+" : ""}${diff.toFixed(2)}h. Please check before submitting.`}
         </div>
       )}
 
