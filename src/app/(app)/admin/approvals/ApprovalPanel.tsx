@@ -9,6 +9,7 @@ import { reviewReportAction, reopenReportAction, bulkApproveAction } from "@/act
 import type { OverviewRow } from "@/lib/adminData";
 import type { MonthData } from "@/lib/period";
 import { WEEKDAY_VI, minToHHMM } from "@/lib/dates";
+import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableUi";
 
 export default function ApprovalPanel({
   year, month, rows, selectedId, detail,
@@ -23,9 +24,27 @@ export default function ApprovalPanel({
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortState>({ key: "fullName", dir: "asc" });
 
-  const selected = rows.find((r) => r.userId === selectedId) ?? null;
-  const pending = rows.filter((r) => r.status === "SUBMITTED");
+  const filteredRows = sortRows(
+    (q.trim()
+      ? rows.filter((r) => [r.fullName, r.username, r.roleTitle, r.status, r.memberNote, r.reviewNote]
+        .some((v) => containsText(v, q)))
+      : rows),
+    sort,
+    (r) => {
+      if (sort.key === "username") return r.username;
+      if (sort.key === "roleTitle") return r.roleTitle ?? "";
+      if (sort.key === "status") return r.status;
+      if (sort.key === "usedHours") return r.usedHours;
+      if (sort.key === "budgetHours") return r.budgetHours;
+      return r.fullName;
+    },
+  );
+
+  const selected = filteredRows.find((r) => r.userId === selectedId) ?? rows.find((r) => r.userId === selectedId) ?? null;
+  const pending = filteredRows.filter((r) => r.status === "SUBMITTED");
 
   function select(userId: string) {
     router.push(`/admin/approvals?year=${year}&month=${month}&user=${userId}`);
@@ -73,6 +92,7 @@ export default function ApprovalPanel({
             : "Không có ai chờ duyệt"}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          <input className="input w-64" placeholder="Tìm member…" value={q} onChange={(e) => setQ(e.target.value)} />
           {msg && <span className="text-xs text-slate-500">{msg}</span>}
           <button className="btn-success" disabled={busy || checked.size === 0}
                   onClick={approveChecked}>
@@ -91,27 +111,43 @@ export default function ApprovalPanel({
             </button>
           </div>
           <div className="max-h-[640px] overflow-y-auto">
-            {rows.map((r) => (
-              <div key={r.userId}
-                   className={`flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-sm
-                     ${r.userId === selectedId ? "bg-brand-50" : "hover:bg-slate-50"}`}>
-                <input type="checkbox" className="h-4 w-4 accent-brand-600"
-                       disabled={r.status !== "SUBMITTED"}
-                       checked={checked.has(r.userId)}
-                       onChange={(e) => setChecked((s) => {
-                         const n = new Set(s);
-                         e.target.checked ? n.add(r.userId) : n.delete(r.userId);
-                         return n;
-                       })} />
-                <button className="flex-1 text-left" onClick={() => select(r.userId)}>
-                  <div className="font-medium text-slate-700">{r.fullName}</div>
-                  <div className="text-xs text-slate-400 num">
-                    {r.usedHours.toFixed(1)}h / {r.budgetHours ? `${r.budgetHours.toFixed(1)}h` : "—"}
-                  </div>
-                </button>
-                <StatusBadge status={r.status} />
-              </div>
-            ))}
+            <table className="data">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th><button onClick={() => setSort(toggleSort(sort, "fullName"))}>Thành viên</button></th>
+                  <th><button onClick={() => setSort(toggleSort(sort, "usedHours"))} className="text-right">Giờ</button></th>
+                  <th><button onClick={() => setSort(toggleSort(sort, "status"))}>Trạng thái</button></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.map((r) => (
+                  <tr key={r.userId} className={r.userId === selectedId ? "bg-brand-50" : ""}>
+                    <td>
+                      <input type="checkbox" className="h-4 w-4 accent-brand-600"
+                             disabled={r.status !== "SUBMITTED"}
+                             checked={checked.has(r.userId)}
+                             onChange={(e) => setChecked((s) => {
+                               const n = new Set(s);
+                               e.target.checked ? n.add(r.userId) : n.delete(r.userId);
+                               return n;
+                             })} />
+                    </td>
+                    <td>
+                      <button className="text-left" onClick={() => select(r.userId)}>
+                        <div className="font-medium text-slate-700">{r.fullName}</div>
+                        <div className="text-xs text-slate-400">{r.username}</div>
+                      </button>
+                    </td>
+                    <td className="text-right num">{r.usedHours.toFixed(1)}h / {r.budgetHours ? `${r.budgetHours.toFixed(1)}h` : "—"}</td>
+                    <td><StatusBadge status={r.status} /></td>
+                  </tr>
+                ))}
+                {filteredRows.length === 0 && (
+                  <tr><td colSpan={4} className="py-8 text-center text-slate-400">Không có member nào khớp bộ lọc.</td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -199,20 +235,39 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: "
 }
 
 function DayTable({ detail }: { detail: MonthData }) {
-  const days = detail.days.filter((d) => d.entries.length > 0 || d.startMin != null);
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortState>({ key: "date", dir: "asc" });
+  const days = sortRows(
+    (q.trim()
+      ? detail.days.filter((d) => [d.date, d.leaveNote, d.remark, d.holidayName, d.entries.map((e) => e.description).join(" ")]
+        .some((v) => containsText(v, q)) && (d.entries.length > 0 || d.startMin != null))
+      : detail.days.filter((d) => d.entries.length > 0 || d.startMin != null)),
+    sort,
+    (d) => {
+      if (sort.key === "day") return d.day;
+      if (sort.key === "attendanceHours") return d.attendanceHours;
+      if (sort.key === "entryHours") return d.entryHours;
+      return d.date;
+    },
+  );
   return (
     <div className="card overflow-hidden">
       <div className="card-header">
         <h2 className="card-title">Chi tiết từng ngày</h2>
         <span className="text-xs text-slate-400">{days.length} ngày có dữ liệu</span>
       </div>
+      <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
+        <input className="input w-64" placeholder="Tìm theo ngày / ghi chú…" value={q} onChange={(e) => setQ(e.target.value)} />
+      </div>
       <div className="max-h-[560px] overflow-auto">
         <table className="data">
           <thead>
             <tr>
-              <th>Ngày</th><th>始業</th><th>終業</th><th className="text-right">休憩</th>
-              <th className="text-right">就業</th><th>Công việc</th>
-              <th className="text-right">Giờ</th><th>Ghi chú</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "day"))}>Ngày</button></th>
+              <th>始業</th><th>終業</th><th className="text-right">休憩</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">就業</button></th>
+              <th>Công việc</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "entryHours"))} className="text-right">Giờ</button></th><th>Ghi chú</th>
             </tr>
           </thead>
           <tbody>
@@ -244,6 +299,9 @@ function DayTable({ detail }: { detail: MonthData }) {
                 </tr>
               );
             })}
+            {days.length === 0 && (
+              <tr><td colSpan={8} className="py-8 text-center text-slate-400">Không có ngày nào khớp bộ lọc.</td></tr>
+            )}
           </tbody>
         </table>
       </div>

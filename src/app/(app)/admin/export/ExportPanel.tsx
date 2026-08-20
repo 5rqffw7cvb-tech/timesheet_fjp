@@ -7,6 +7,7 @@ import StatusBadge from "@/components/StatusBadge";
 import type { OverviewRow } from "@/lib/adminData";
 import { calcBillingByProjects } from "@/lib/billing";
 import { currencySymbol, type BillingCurrency } from "@/lib/currency";
+import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableUi";
 
 export default function ExportPanel({
   year, month, rows, workingDays, selectedPeriods, selectedProjectIds, projects, billingCurrency,
@@ -28,10 +29,31 @@ export default function ExportPanel({
   const [monthPopupOpen, setMonthPopupOpen] = useState(false);
   const [months, setMonths] = useState<string[]>(selectedPeriods.length ? selectedPeriods : [`${year}-${String(month).padStart(2, "0")}`]);
   const [projectId, setProjectId] = useState<string>(selectedProjectIds[0] ?? "");
+  const [q, setQ] = useState("");
+  const [billingSort, setBillingSort] = useState<SortState>({ key: "fullName", dir: "asc" });
+  const [fileSort, setFileSort] = useState<SortState>({ key: "fullName", dir: "asc" });
 
   const approved = rows.filter((r) => r.status === "APPROVED");
   const withData = rows.filter((r) => r.usedHours > 0 || r.attendanceHours > 0);
-  const billing = withData.map((r) => ({
+  const filteredRows = q.trim()
+    ? rows.filter((r) => [r.fullName, r.username, r.displayName, r.roleTitle, r.status, r.memberNote, r.reviewNote]
+      .some((v) => containsText(v, q)))
+    : rows;
+  const filteredBilling = sortRows(
+    withData.filter((r) => !q.trim() || [r.fullName, r.username, r.displayName, r.roleTitle, r.status].some((v) => containsText(v, q))),
+    billingSort,
+    (r) => {
+      if (billingSort.key === "usedHours") return r.usedHours;
+      if (billingSort.key === "amount") return calcBillingByProjects(
+        r.usedHours,
+        r.billingFactor,
+        r.byProject.map((p) => ({ projectId: p.projectId, hours: p.used, unitPriceMm: p.unitPriceMm })),
+        r.billingUnitPrice,
+      ).adjustmentAmount;
+      if (billingSort.key === "status") return r.status;
+      return r.fullName;
+    },
+  ).map((r) => ({
     member: r,
     calc: calcBillingByProjects(
       r.usedHours,
@@ -40,7 +62,17 @@ export default function ExportPanel({
       r.billingUnitPrice,
     ),
   }));
-  const totals = billing.reduce(
+  const filteredFiles = sortRows(
+    filteredRows,
+    fileSort,
+    (r) => {
+      if (fileSort.key === "usedHours") return r.usedHours;
+      if (fileSort.key === "attendanceHours") return r.attendanceHours;
+      if (fileSort.key === "status") return r.status;
+      return r.fullName;
+    },
+  );
+  const totals = filteredBilling.reduce(
     (a, b) => ({
       amount: a.amount + b.calc.adjustmentAmount,
       under: a.under + (b.calc.band === "UNDER" ? 1 : 0),
@@ -117,6 +149,7 @@ export default function ExportPanel({
         <span className="text-sm text-slate-500">
           Đang xem: {months.length} tháng · {projectId ? "1 project" : "tất cả project"}
         </span>
+        <input className="input ml-auto w-64" placeholder="Tìm member…" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
       {filterOpen && (
@@ -248,13 +281,14 @@ export default function ExportPanel({
         <table className="data">
           <thead>
             <tr>
-              <th>Member</th><th className="text-right">Giờ</th><th className="text-right">Công số</th>
+              <th><button onClick={() => setBillingSort(toggleSort(billingSort, "fullName"))}>Member</button></th>
+              <th><button className="text-right" onClick={() => setBillingSort(toggleSort(billingSort, "usedHours"))}>Giờ</button></th><th className="text-right">Công số</th>
               <th className="text-right">Lower</th><th className="text-right">Upper</th><th className="text-right">Giờ thiếu</th>
-              <th className="text-right">Giờ vượt</th><th className="text-right">Đơn giá TB ({moneyUnit})</th><th className="text-right">Điều chỉnh ({moneyUnit})</th>
+              <th className="text-right">Giờ vượt</th><th className="text-right">Đơn giá TB ({moneyUnit})</th><th><button className="text-right" onClick={() => setBillingSort(toggleSort(billingSort, "amount"))}>Điều chỉnh ({moneyUnit})</button></th>
             </tr>
           </thead>
           <tbody>
-            {billing.map(({ member, calc }) => (
+            {filteredBilling.map(({ member, calc }) => (
               <tr key={member.userId}>
                 <td>
                   <div className="font-medium text-slate-700">{member.fullName}</div>
@@ -272,7 +306,7 @@ export default function ExportPanel({
                 </td>
               </tr>
             ))}
-            {billing.length === 0 && (
+            {filteredBilling.length === 0 && (
               <tr><td colSpan={9} className="py-8 text-center text-slate-400">Không có dữ liệu trong tháng này.</td></tr>
             )}
           </tbody>
@@ -289,13 +323,13 @@ export default function ExportPanel({
         <table className="data">
           <thead>
             <tr>
-              <th>Thành viên</th><th>Tên file</th>
-              <th className="text-right">Giờ</th><th className="text-right">就業時間</th>
-              <th>Trạng thái</th><th></th>
+              <th><button onClick={() => setFileSort(toggleSort(fileSort, "fullName"))}>Thành viên</button></th><th>Tên file</th>
+              <th><button className="text-right" onClick={() => setFileSort(toggleSort(fileSort, "usedHours"))}>Giờ</button></th><th><button className="text-right" onClick={() => setFileSort(toggleSort(fileSort, "attendanceHours"))}>就業時間</button></th>
+              <th><button onClick={() => setFileSort(toggleSort(fileSort, "status"))}>Trạng thái</button></th><th></th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {filteredFiles.map((r) => {
               const fileName = `週報_FPTジャパン_${r.displayName || r.username}_${year}年${String(month).padStart(2, "0")}月.xlsx`;
               const empty = r.usedHours === 0 && r.attendanceHours === 0;
               return (
@@ -314,6 +348,9 @@ export default function ExportPanel({
                 </tr>
               );
             })}
+            {filteredFiles.length === 0 && (
+              <tr><td colSpan={6} className="py-8 text-center text-slate-400">Không có file nào khớp bộ lọc.</td></tr>
+            )}
           </tbody>
         </table>
       </div>

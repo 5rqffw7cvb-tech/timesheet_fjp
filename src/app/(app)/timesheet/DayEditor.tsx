@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Project, WorkType } from "@/db/schema";
 import { minToHHMM, hhmmToMin, WEEKDAY_JA, WEEKDAY_VI, workedHours } from "@/lib/dates";
 import type { DayData, EntryData } from "@/lib/period";
+import { containsText, sortRows, toggleSort, type SortState } from "@/lib/tableUi";
 
 export interface DraftEntry extends Omit<EntryData, "id"> { key: string }
 
@@ -55,6 +56,8 @@ export default function DayEditor({
   const attendance = workedHours(draft.startMin, draft.endMin, draft.breakMin);
   const entryTotal = draft.entries.reduce((s, e) => s + (e.isPlan ? 0 : e.hours), 0);
   const diff = Math.round((entryTotal - attendance) * 100) / 100;
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortState>({ key: "project", dir: "asc" });
 
   const patch = (p: Partial<DayDraft>) => onChange({ ...draft, ...p });
 
@@ -79,6 +82,21 @@ export default function DayEditor({
   function removeEntry(key: string) {
     patch({ entries: draft.entries.filter((e) => e.key !== key) });
   }
+
+  const filteredEntries = useMemo(() => {
+    const needle = q.trim();
+    const base = needle
+      ? draft.entries.filter((e) => [e.description, e.projectId, e.workTypeId, e.isPlan ? "予定" : "", String(e.hours)]
+        .some((v) => containsText(v, needle)))
+      : draft.entries;
+    return sortRows(base, sort, (e) => {
+      if (sort.key === "project") return projects.find((p) => p.id === e.projectId)?.name ?? e.projectId;
+      if (sort.key === "workType") return workTypes.find((w) => w.id === e.workTypeId)?.name ?? e.workTypeId;
+      if (sort.key === "hours") return e.hours;
+      if (sort.key === "isPlan") return e.isPlan ? 1 : 0;
+      return e.description;
+    });
+  }, [draft.entries, q, sort, projects, workTypes]);
 
   const dateObj = new Date(day.date + "T00:00:00");
   const dateLabel = `${WEEKDAY_VI[day.weekday]} · ${String(day.day).padStart(2, "0")}/${String(dateObj.getMonth() + 1).padStart(2, "0")}/${dateObj.getFullYear()}`;
@@ -183,26 +201,29 @@ export default function DayEditor({
           </div>
 
           <div className="overflow-x-auto rounded-md border border-slate-200">
+            <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2">
+              <input className="input w-64" placeholder="Tìm dòng công việc…" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
             <table className="data">
               <thead>
                 <tr>
-                  <th className="w-[190px]">プロジェクト</th>
-                  <th className="w-[260px]">工種</th>
+                  <th className="w-[190px]"><button onClick={() => setSort(toggleSort(sort, "project"))}>プロジェクト</button></th>
+                  <th className="w-[260px]"><button onClick={() => setSort(toggleSort(sort, "workType"))}>工種</button></th>
                   <th>主な作業内容</th>
-                  <th className="w-[84px] text-right">Giờ</th>
-                  <th className="w-[74px]">予定</th>
+                  <th className="w-[84px] text-right"><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">Giờ</button></th>
+                  <th className="w-[74px]"><button onClick={() => setSort(toggleSort(sort, "isPlan"))}>予定</button></th>
                   <th className="w-[44px]"></th>
                 </tr>
               </thead>
               <tbody>
-                {draft.entries.length === 0 && (
+                {filteredEntries.length === 0 && (
                   <tr>
                     <td colSpan={6} className="py-6 text-center text-sm text-slate-400">
-                      Chưa có dòng nào. Bấm “Thêm dòng” để bắt đầu.
+                      Chưa có dòng nào khớp bộ lọc. Bấm “Thêm dòng” để bắt đầu.
                     </td>
                   </tr>
                 )}
-                {draft.entries.map((e) => (
+                {filteredEntries.map((e) => (
                   <tr key={e.key}>
                     <td>
                       <select className="select" disabled={readOnly} value={e.projectId}

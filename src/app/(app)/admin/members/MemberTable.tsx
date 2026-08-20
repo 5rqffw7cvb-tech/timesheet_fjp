@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   createMemberAction, updateMemberAction, toggleMemberAction, resetPasswordAction,
 } from "@/actions/admin";
+import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableUi";
 
 interface Member {
   id: string; username: string; fullName: string; displayName: string | null;
@@ -29,6 +30,27 @@ export default function MemberTable({
   const [editing, setEditing] = useState<Member | "new" | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortState>({ key: "fullName", dir: "asc" });
+
+  const filteredMembers = useMemo(() => {
+    const needle = q.trim();
+    const base = needle
+      ? members.filter((m) =>
+        [m.fullName, m.username, m.displayName, m.employeeCode, m.roleTitle, m.location, m.companyId]
+          .some((v) => containsText(v, needle)))
+      : members;
+
+    return sortRows(base, sort, (m) => {
+      if (sort.key === "username") return m.username;
+      if (sort.key === "displayName") return m.displayName ?? "";
+      if (sort.key === "roleTitle") return m.roleTitle ?? "";
+      if (sort.key === "employeeCode") return m.employeeCode ?? "";
+      if (sort.key === "location") return m.location ?? "";
+      if (sort.key === "role") return m.role;
+      return m.fullName;
+    });
+  }, [members, q, sort]);
 
   function toggle(m: Member) {
     startTransition(async () => {
@@ -56,6 +78,7 @@ export default function MemberTable({
           {members.filter((m) => m.isActive).length} đang hoạt động / {members.length}
         </span>
         <div className="ml-auto flex items-center gap-2">
+          <input className="input w-64" placeholder="Tìm member…" value={q} onChange={(e) => setQ(e.target.value)} />
           {msg && <span className="text-xs text-slate-500">{msg}</span>}
           <button className="btn-primary" onClick={() => setEditing("new")}>+ Thêm thành viên</button>
         </div>
@@ -74,13 +97,18 @@ export default function MemberTable({
         <table className="data">
           <thead>
             <tr>
-              <th>Họ tên (氏名)</th><th>Đăng nhập</th><th>Tên file</th>
-              <th>Vai trò</th><th>支払先</th><th>Đơn giá</th><th>Công số</th><th>Nơi làm</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "fullName"))}>Họ tên (氏名)</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "username"))}>Đăng nhập</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "displayName"))}>Tên file</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "roleTitle"))}>Vai trò</button></th>
+              <th><button onClick={() => setSort(toggleSort(sort, "employeeCode"))}>支払先</button></th>
+              <th>Đơn giá</th><th>Công số</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "location"))}>Nơi làm</button></th>
               <th>Quyền</th><th>Trạng thái</th><th></th>
             </tr>
           </thead>
           <tbody>
-            {members.map((m) => (
+            {filteredMembers.map((m) => (
               <tr key={m.id} className={m.isActive ? "" : "opacity-50"}>
                 <td className="font-medium text-slate-700">{m.fullName}</td>
                 <td className="num text-slate-600">{m.username}</td>
@@ -109,6 +137,9 @@ export default function MemberTable({
                 </td>
               </tr>
             ))}
+            {filteredMembers.length === 0 && (
+              <tr><td colSpan={11} className="py-8 text-center text-slate-400">Không có member nào khớp bộ lọc.</td></tr>
+            )}
           </tbody>
         </table>
       </div>

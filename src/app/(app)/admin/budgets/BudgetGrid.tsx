@@ -5,6 +5,7 @@ import MonthNav from "@/components/MonthNav";
 import { setBudgetAction, copyBudgetsAction } from "@/actions/admin";
 import { shiftMonth } from "@/lib/dates";
 import { currencySymbol, type BillingCurrency } from "@/lib/currency";
+import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableUi";
 
 const HOURS_PER_CONG = 180;
 
@@ -31,12 +32,27 @@ export default function BudgetGrid({
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState<SortState>({ key: "fullName", dir: "asc" });
 
   const shown = projects.filter(
     (p) => members.some((m) => values[`${m.userId}|${p.id}`] || m.used[p.id]),
   );
   const [extra, setExtra] = useState<string[]>([]);
   const visible = [...shown, ...projects.filter((p) => extra.includes(p.id) && !shown.includes(p))];
+  const filteredMembers = sortRows(
+    (q.trim()
+      ? members.filter((m) => [m.fullName, m.roleTitle, ...visible.map((p) => p.name), ...visible.map((p) => p.code)]
+        .some((v) => containsText(v, q)))
+      : members),
+    sort,
+    (m) => {
+      if (sort.key === "roleTitle") return m.roleTitle ?? "";
+      if (sort.key === "totalBudget") return visible.reduce((s, p) => s + (values[`${m.userId}|${p.id}`] ?? 0), 0);
+      if (sort.key === "totalUsed") return visible.reduce((s, p) => s + hoursToCong(m.used[p.id] ?? 0), 0);
+      return m.fullName;
+    },
+  );
 
   function set(userId: string, projectId: string, v: number) {
     const key = `${userId}|${projectId}`;
@@ -87,6 +103,7 @@ export default function BudgetGrid({
         <MonthNav year={year} month={month} />
         <span className="text-sm text-slate-500">Budget công + đơn giá theo thành viên × project (1.0 = 180h, đơn giá {moneyUnit}/MM)</span>
         <div className="ml-auto flex items-center gap-2">
+          <input className="input w-64" placeholder="Tìm member / project…" value={q} onChange={(e) => setQ(e.target.value)} />
           <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
             Nếu nhập &gt; 0 thì project này sẽ được assign cho member
           </span>
@@ -112,7 +129,7 @@ export default function BudgetGrid({
         <table className="data">
           <thead>
             <tr>
-              <th className="min-w-[200px]">Thành viên</th>
+              <th><button onClick={() => setSort(toggleSort(sort, "fullName"))} className="min-w-[200px] text-left">Thành viên</button></th>
               {visible.map((p) => (
                 <th key={p.id} className="text-right">
                   <button className="hover:text-brand-600" onClick={() => fillColumn(p.id)}
@@ -127,7 +144,7 @@ export default function BudgetGrid({
             </tr>
           </thead>
           <tbody>
-            {members.map((m) => {
+            {filteredMembers.map((m) => {
               const totalBudget = visible.reduce((s, p) => s + (values[`${m.userId}|${p.id}`] ?? 0), 0);
               const totalUsedHours = visible.reduce((s, p) => s + (m.used[p.id] ?? 0), 0);
               const totalUsedCong = hoursToCong(totalUsedHours);
@@ -179,6 +196,9 @@ export default function BudgetGrid({
               <tr><td colSpan={3} className="py-8 text-center text-slate-400">
                 Chọn một project ở ô “Thêm project vào bảng” để bắt đầu set budget.
               </td></tr>
+            )}
+            {filteredMembers.length === 0 && visible.length > 0 && (
+              <tr><td colSpan={visible.length + 3} className="py-8 text-center text-slate-400">Không có member nào khớp bộ lọc.</td></tr>
             )}
           </tbody>
         </table>
