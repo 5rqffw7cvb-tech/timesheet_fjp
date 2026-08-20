@@ -1,18 +1,28 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import MonthNav from "@/components/MonthNav";
 import StatusBadge from "@/components/StatusBadge";
 import type { OverviewRow } from "@/lib/adminData";
 import { calcBilling } from "@/lib/billing";
 
 export default function ExportPanel({
-  year, month, rows, workingDays,
+  year, month, rows, workingDays, selectedPeriods, selectedProjectIds, projects,
 }: {
-  year: number; month: number; rows: OverviewRow[]; workingDays: number;
+  year: number;
+  month: number;
+  rows: OverviewRow[];
+  workingDays: number;
+  selectedPeriods: string[];
+  selectedProjectIds: string[];
+  projects: { id: string; code: string; name: string }[];
 }) {
+  const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [months, setMonths] = useState<string[]>(selectedPeriods.length ? selectedPeriods : [`${year}-${String(month).padStart(2, "0")}`]);
+  const [projectIds, setProjectIds] = useState<string[]>(selectedProjectIds);
 
   const approved = rows.filter((r) => r.status === "APPROVED");
   const withData = rows.filter((r) => r.usedHours > 0 || r.attendanceHours > 0);
@@ -32,6 +42,9 @@ export default function ExportPanel({
     }),
     { amount: 0, under: 0, over: 0 },
   );
+
+  const monthChoices = buildMonthChoices(year, month, 18);
+  const isWeeklyCompatible = months.length === 1 && projectIds.length === 0;
 
   async function download(url: string, key: string) {
     setBusy(key);
@@ -63,8 +76,81 @@ export default function ExportPanel({
     }
   }
 
+  function applyFilters() {
+    if (months.length === 0) {
+      setMsg("Vui lòng chọn ít nhất 1 tháng.");
+      return;
+    }
+    const qs = new URLSearchParams();
+    qs.set("year", String(year));
+    qs.set("month", String(month));
+    qs.set("months", months.join(","));
+    if (projectIds.length) qs.set("projects", projectIds.join(","));
+    router.push(`/admin/export?${qs.toString()}`);
+  }
+
+  function billingUrl(scope: "all" | "approved") {
+    const qs = new URLSearchParams();
+    qs.set("scope", scope);
+    qs.set("months", months.join(","));
+    if (projectIds.length) qs.set("projectIds", projectIds.join(","));
+    return `/api/export/billing?${qs.toString()}`;
+  }
+
+  function toggleMonth(v: string) {
+    setMonths((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]);
+  }
+
+  function toggleProject(id: string) {
+    setProjectIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }
+
   return (
     <div className="space-y-4">
+      <div className="card p-4">
+        <div className="mb-3 text-sm font-semibold text-slate-700">Điều kiện report</div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div>
+            <div className="mb-2 text-xs font-medium text-slate-500">Chọn 1 hoặc nhiều tháng</div>
+            <div className="grid max-h-44 grid-cols-2 gap-2 overflow-y-auto rounded-md border border-slate-200 p-2">
+              {monthChoices.map((m) => (
+                <label key={m} className="flex items-center gap-2 text-sm text-slate-700">
+                  <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={months.includes(m)} onChange={() => toggleMonth(m)} />
+                  <span className="num">{m}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="mb-2 text-xs font-medium text-slate-500">Filter dự án (bỏ trống = tất cả)</div>
+            <div className="max-h-44 overflow-y-auto rounded-md border border-slate-200 p-2">
+              <div className="space-y-1">
+                {projects.map((p) => (
+                  <label key={p.id} className="flex items-center gap-2 text-sm text-slate-700">
+                    <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={projectIds.includes(p.id)} onChange={() => toggleProject(p.id)} />
+                    <span className="num text-slate-500">{p.code}</span>
+                    <span>{p.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button className="btn-primary" onClick={applyFilters}>Áp dụng bộ lọc</button>
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              setMonths([`${year}-${String(month).padStart(2, "0")}`]);
+              setProjectIds([]);
+            }}
+          >
+            Reset
+          </button>
+          <span className="text-xs text-slate-500">Đang xem: {months.length} tháng, {projectIds.length || "tất cả"} project</span>
+        </div>
+      </div>
+
       <div className="card flex flex-wrap items-center gap-3 px-4 py-3">
         <MonthNav year={year} month={month} />
         <span className="text-sm text-slate-500">
@@ -72,18 +158,18 @@ export default function ExportPanel({
         </span>
         <div className="ml-auto flex gap-2">
           <button className="btn-secondary" disabled={busy !== null || withData.length === 0}
-                  onClick={() => download(`/api/export/billing?year=${year}&month=${month}&scope=all`, "billing-all")}>
+                  onClick={() => download(billingUrl("all"), "billing-all")}>
             {busy === "billing-all" ? "Đang tạo…" : "Tải Billing (all)"}
           </button>
           <button className="btn-secondary" disabled={busy !== null || approved.length === 0}
-                  onClick={() => download(`/api/export/billing?year=${year}&month=${month}&scope=approved`, "billing-approved")}>
+                  onClick={() => download(billingUrl("approved"), "billing-approved")}>
             {busy === "billing-approved" ? "Đang tạo…" : "Tải Billing (approved)"}
           </button>
-          <button className="btn-secondary" disabled={busy !== null || withData.length === 0}
+          <button className="btn-secondary" disabled={busy !== null || withData.length === 0 || !isWeeklyCompatible}
                   onClick={() => download(`/api/export?year=${year}&month=${month}&scope=all`, "all")}>
             {busy === "all" ? "Đang tạo…" : `Tải tất cả có dữ liệu (${withData.length})`}
           </button>
-          <button className="btn-primary" disabled={busy !== null || approved.length === 0}
+          <button className="btn-primary" disabled={busy !== null || approved.length === 0 || !isWeeklyCompatible}
                   onClick={() => download(`/api/export?year=${year}&month=${month}&scope=approved`, "zip")}>
             {busy === "zip" ? "Đang tạo…" : `Tải ZIP đã chốt (${approved.length})`}
           </button>
@@ -92,6 +178,12 @@ export default function ExportPanel({
 
       {msg && (
         <div className="card border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">{msg}</div>
+      )}
+
+      {!isWeeklyCompatible && (
+        <div className="card border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Chế độ nhiều tháng hoặc có filter project chỉ áp dụng cho Billing report. Nút xuất 週報 tuần sẽ chỉ hoạt động khi chọn đúng 1 tháng và không lọc project.
+        </div>
       )}
 
       <div className="grid gap-3 md:grid-cols-4">
@@ -167,7 +259,7 @@ export default function ExportPanel({
                   <td className="text-right num">{r.attendanceHours ? r.attendanceHours.toFixed(1) : "—"}</td>
                   <td><StatusBadge status={r.status} /></td>
                   <td className="text-right">
-                    <button className="btn-secondary btn-sm" disabled={busy !== null || empty}
+                    <button className="btn-secondary btn-sm" disabled={busy !== null || empty || !isWeeklyCompatible}
                             onClick={() => download(`/api/export?year=${year}&month=${month}&user=${r.userId}`, r.userId)}>
                       {busy === r.userId ? "…" : "Tải file"}
                     </button>
@@ -199,4 +291,16 @@ function Metric({ label, value, tone }: { label: string; value: string; tone?: "
       <div className={`text-xl font-semibold num ${tone === "warn" ? "text-amber-600" : "text-slate-800"}`}>{value}</div>
     </div>
   );
+}
+
+function buildMonthChoices(year: number, month: number, count: number) {
+  const out: string[] = [];
+  const d = new Date(year, month - 1, 1);
+  for (let i = 0; i < count; i++) {
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    d.setMonth(d.getMonth() - 1);
+  }
+  return out;
 }

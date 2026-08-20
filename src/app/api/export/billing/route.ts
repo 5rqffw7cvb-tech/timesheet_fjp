@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { monthOverview } from "@/lib/adminData";
-import { buildBillingWorkbook, billingFileName } from "@/lib/excel/billingReport";
+import { monthOverviewForPeriods } from "@/lib/adminData";
+import { buildBillingWorkbookWithLabel, billingFileName } from "@/lib/excel/billingReport";
 
 export const dynamic = "force-dynamic";
 
@@ -16,18 +16,36 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const year = Number(url.searchParams.get("year"));
   const month = Number(url.searchParams.get("month"));
+  const monthsRaw = (url.searchParams.get("months") ?? "").trim();
+  const projectIdsRaw = (url.searchParams.get("projectIds") ?? "").trim();
   const scope = url.searchParams.get("scope") ?? "approved";
 
-  if (!year || !month || month < 1 || month > 12) {
-    return NextResponse.json({ error: "Thiếu hoặc sai tham số year/month" }, { status: 400 });
+  const periods = monthsRaw
+    ? monthsRaw.split(",").map((s) => s.trim()).filter(Boolean).map((s) => {
+        const m = /^(\d{4})-(\d{2})$/.exec(s);
+        if (!m) return null;
+        return { year: Number(m[1]), month: Number(m[2]) };
+      }).filter((x): x is { year: number; month: number } => !!x && x.month >= 1 && x.month <= 12)
+    : (year && month && month >= 1 && month <= 12 ? [{ year, month }] : []);
+
+  if (periods.length === 0) {
+    return NextResponse.json({ error: "Thiếu hoặc sai tham số tháng. Dùng year/month hoặc months=YYYY-MM,YYYY-MM" }, { status: 400 });
   }
 
+  const projectIds = projectIdsRaw
+    ? projectIdsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
   try {
-    const rows = await monthOverview(year, month);
+    const rows = await monthOverviewForPeriods(
+      periods,
+      projectIds,
+      scope === "all" ? "all" : "approved",
+    );
     const targets = rows.filter((r) => {
       const hasData = r.usedHours > 0 || r.attendanceHours > 0;
       if (!hasData) return false;
-      return scope === "all" ? true : r.status === "APPROVED";
+      return true;
     });
 
     if (targets.length === 0) {
@@ -37,8 +55,18 @@ export async function GET(req: Request) {
       );
     }
 
-    const buffer = buildBillingWorkbook(year, month, targets);
-    const fileName = billingFileName(year, month);
+    const sorted = [...periods].sort((a, b) => (a.year - b.year) || (a.month - b.month));
+    const first = sorted[0];
+    const last = sorted[sorted.length - 1];
+    const label = sorted.length === 1
+      ? `${first.year}年${String(first.month).padStart(2, "0")}月`
+      : `${first.year}年${String(first.month).padStart(2, "0")}月_${last.year}年${String(last.month).padStart(2, "0")}月`;
+
+    const buffer = buildBillingWorkbookWithLabel(label, targets);
+    const fileName = billingFileName(first.year, first.month).replace(
+      `${first.year}年${String(first.month).padStart(2, "0")}月`,
+      label,
+    );
 
     return new NextResponse(new Uint8Array(buffer), {
       headers: {

@@ -109,4 +109,75 @@ export async function monthWorkingDays(year: number, month: number) {
   return row?.workingDays ?? defaultWorkingDays(year, month);
 }
 
+export interface PeriodKey {
+  year: number;
+  month: number;
+}
+
+export async function monthOverviewForPeriods(
+  periods: PeriodKey[],
+  projectIds?: string[],
+  scope: "all" | "approved" = "all",
+): Promise<OverviewRow[]> {
+  const uniquePeriods = [...new Map(
+    periods
+      .filter((p) => p.year > 0 && p.month >= 1 && p.month <= 12)
+      .map((p) => [`${p.year}-${p.month}`, p]),
+  ).values()];
+
+  if (uniquePeriods.length === 0) return [];
+
+  const filterSet = projectIds?.length ? new Set(projectIds) : null;
+  const maps = await Promise.all(uniquePeriods.map((p) => monthOverview(p.year, p.month)));
+
+  const combined = new Map<string, OverviewRow>();
+
+  for (const rows of maps) {
+    for (const row of rows) {
+      if (scope === "approved" && row.status !== "APPROVED") continue;
+
+      const byProject = filterSet
+        ? row.byProject.filter((p) => filterSet.has(p.projectId))
+        : row.byProject;
+      const usedHours = round2(byProject.reduce((s, p) => s + p.used, 0));
+      const budgetHours = round2(byProject.reduce((s, p) => s + p.budget, 0));
+
+      if (!combined.has(row.userId)) {
+        combined.set(row.userId, {
+          ...row,
+          byProject: [],
+          budgetHours: 0,
+          usedHours: 0,
+          attendanceHours: 0,
+          daysLogged: 0,
+        });
+      }
+
+      const acc = combined.get(row.userId)!;
+      acc.attendanceHours = round2(acc.attendanceHours + row.attendanceHours);
+      acc.daysLogged += row.daysLogged;
+      acc.usedHours = round2(acc.usedHours + usedHours);
+      acc.budgetHours = round2(acc.budgetHours + budgetHours);
+
+      const projectMap = new Map(acc.byProject.map((p) => [p.projectId, p]));
+      for (const p of byProject) {
+        const current = projectMap.get(p.projectId);
+        if (current) {
+          current.budget = round2(current.budget + p.budget);
+          current.used = round2(current.used + p.used);
+        } else {
+          projectMap.set(p.projectId, { ...p });
+        }
+      }
+      acc.byProject = [...projectMap.values()].sort((a, b) => a.code.localeCompare(b.code));
+
+      if (row.status === "REJECTED") acc.status = "REJECTED";
+      else if (row.status === "SUBMITTED" && acc.status !== "REJECTED") acc.status = "SUBMITTED";
+      else if (row.status === "DRAFT" && acc.status === "APPROVED") acc.status = "DRAFT";
+    }
+  }
+
+  return [...combined.values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
+}
+
 function round2(n: number) { return Math.round(n * 100) / 100; }
