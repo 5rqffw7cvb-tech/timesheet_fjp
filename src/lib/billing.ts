@@ -4,6 +4,12 @@ export interface BillingInput {
   unitPrice: number;
 }
 
+export interface ProjectBillingInput {
+  projectId: string;
+  hours: number;
+  unitPriceMm: number;
+}
+
 export interface BillingResult {
   lowerHours: number;
   upperHours: number;
@@ -13,6 +19,16 @@ export interface BillingResult {
   adjustmentMm: number;
   adjustmentAmount: number;
   band: "UNDER" | "NORMAL" | "OVER";
+  weightedUnitPrice: number;
+  byProject: {
+    projectId: string;
+    hours: number;
+    ratio: number;
+    allocatedAdjustHours: number;
+    allocatedAdjustMm: number;
+    unitPriceMm: number;
+    amount: number;
+  }[];
 }
 
 export function calcBilling(input: BillingInput): BillingResult {
@@ -42,6 +58,97 @@ export function calcBilling(input: BillingInput): BillingResult {
     adjustmentMm,
     adjustmentAmount,
     band,
+    weightedUnitPrice: unitPrice,
+    byProject: [
+      {
+        projectId: "__ALL__",
+        hours: actual,
+        ratio: actual > 0 ? 1 : 0,
+        allocatedAdjustHours: adjustmentHours,
+        allocatedAdjustMm: adjustmentMm,
+        unitPriceMm: unitPrice,
+        amount: adjustmentAmount,
+      },
+    ],
+  };
+}
+
+export function calcBillingByProjects(
+  actualHours: number,
+  factor: number,
+  projects: ProjectBillingInput[],
+  fallbackUnitPrice: number,
+): BillingResult {
+  const normalized = projects
+    .map((p) => ({
+      projectId: p.projectId,
+      hours: Math.max(0, p.hours || 0),
+      unitPriceMm: Math.max(0, p.unitPriceMm || 0),
+    }))
+    .filter((p) => p.hours > 0);
+
+  const totalHours = round2(normalized.reduce((s, p) => s + p.hours, 0));
+  const base = calcBilling({
+    actualHours,
+    factor,
+    unitPrice: Math.max(0, fallbackUnitPrice || 0),
+  });
+
+  if (normalized.length === 0 || totalHours <= 0 || base.adjustmentHours === 0) {
+    return {
+      ...base,
+      weightedUnitPrice: normalized.length === 0
+        ? Math.max(0, fallbackUnitPrice || 0)
+        : round2(
+          normalized.reduce((s, p) => s + (p.unitPriceMm * p.hours), 0) / totalHours,
+        ),
+      byProject: normalized.map((p) => ({
+        projectId: p.projectId,
+        hours: p.hours,
+        ratio: round4(totalHours > 0 ? p.hours / totalHours : 0),
+        allocatedAdjustHours: 0,
+        allocatedAdjustMm: 0,
+        unitPriceMm: p.unitPriceMm,
+        amount: 0,
+      })),
+    };
+  }
+
+  const byProject: BillingResult["byProject"] = [];
+  let allocatedHours = 0;
+
+  for (let i = 0; i < normalized.length; i++) {
+    const p = normalized[i];
+    const ratio = totalHours > 0 ? p.hours / totalHours : 0;
+    const isLast = i === normalized.length - 1;
+    const allocH = isLast
+      ? round2(base.adjustmentHours - allocatedHours)
+      : round2(base.adjustmentHours * ratio);
+    allocatedHours = round2(allocatedHours + allocH);
+    const allocMm = round4(allocH / 180);
+    const amount = round0(allocMm * p.unitPriceMm);
+
+    byProject.push({
+      projectId: p.projectId,
+      hours: p.hours,
+      ratio: round4(ratio),
+      allocatedAdjustHours: allocH,
+      allocatedAdjustMm: allocMm,
+      unitPriceMm: p.unitPriceMm,
+      amount,
+    });
+  }
+
+  const adjustmentAmount = byProject.reduce((s, p) => s + p.amount, 0);
+  const weightedUnitPrice = round2(
+    normalized.reduce((s, p) => s + (p.unitPriceMm * p.hours), 0) / totalHours,
+  );
+
+  return {
+    ...base,
+    weightedUnitPrice,
+    adjustmentAmount,
+    byProject,
   };
 }
 

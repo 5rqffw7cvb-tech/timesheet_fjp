@@ -1,7 +1,7 @@
 import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  budgets, dayLogs, monthlyReports, projects, timeEntries, users, monthSettings,
+  budgets, dayLogs, monthlyReports, projects, projectRates, timeEntries, users, monthSettings,
 } from "@/db/schema";
 import { daysInMonth, ymd, workedHours } from "./dates";
 import { defaultWorkingDays } from "./period";
@@ -22,20 +22,28 @@ export interface OverviewRow {
   usedHours: number;
   attendanceHours: number;   // tổng 就業時間 tính từ giờ vào/ra
   daysLogged: number;
-  byProject: { projectId: string; code: string; name: string; budget: number; used: number }[];
+  byProject: {
+    projectId: string;
+    code: string;
+    name: string;
+    budget: number;
+    used: number;
+    unitPriceMm: number;
+  }[];
 }
 
 export async function monthOverview(year: number, month: number): Promise<OverviewRow[]> {
   const first = ymd(year, month, 1);
   const last = ymd(year, month, daysInMonth(year, month));
 
-  const [memberRows, budgetRows, entryRows, logRows, reportRows] = await Promise.all([
+  const [memberRows, budgetRows, entryRows, logRows, reportRows, rateRows] = await Promise.all([
     db.select().from(users)
       .where(and(eq(users.isActive, true), eq(users.role, "MEMBER")))
       .orderBy(asc(users.fullName)),
     db.select({
       userId: budgets.userId, projectId: budgets.projectId,
-      hours: budgets.hours, code: projects.code, name: projects.name,
+      hours: budgets.hours, unitPriceMm: budgets.unitPriceMm,
+      code: projects.code, name: projects.name,
     }).from(budgets)
       .innerJoin(projects, eq(projects.id, budgets.projectId))
       .where(and(eq(budgets.year, year), eq(budgets.month, month))),
@@ -53,7 +61,26 @@ export async function monthOverview(year: number, month: number): Promise<Overvi
     db.select().from(dayLogs).where(and(gte(dayLogs.date, first), lte(dayLogs.date, last))),
     db.select().from(monthlyReports)
       .where(and(eq(monthlyReports.year, year), eq(monthlyReports.month, month))),
+    db.select({
+      userId: projectRates.userId,
+      projectId: projectRates.projectId,
+      effectiveFrom: projectRates.effectiveFrom,
+      unitPriceMm: projectRates.unitPriceMm,
+    }).from(projectRates)
+      .where(lte(projectRates.effectiveFrom, last)),
   ]);
+
+  const latestRateByUserProject = new Map<string, { effectiveFrom: string; unitPriceMm: number }>();
+  for (const r of rateRows) {
+    const key = `${r.userId}|${r.projectId}`;
+    const current = latestRateByUserProject.get(key);
+    if (!current || r.effectiveFrom > current.effectiveFrom) {
+      latestRateByUserProject.set(key, {
+        effectiveFrom: r.effectiveFrom,
+        unitPriceMm: Number(r.unitPriceMm),
+      });
+    }
+  }
 
   const reportByUser = new Map(reportRows.map((r) => [r.userId, r]));
   const attendanceByUser = new Map<string, { hours: number; days: number }>();
@@ -66,15 +93,29 @@ export async function monthOverview(year: number, month: number): Promise<Overvi
   }
 
   const projectMap = new Map<string, Map<string, {
-    projectId: string; code: string; name: string; budget: number; used: number;
+    projectId: string; code: string; name: string; budget: number; used: number; unitPriceMm: number;
   }>>();
   const touch = (userId: string, projectId: string, code: string, name: string) => {
     if (!projectMap.has(userId)) projectMap.set(userId, new Map());
     const m = projectMap.get(userId)!;
-    if (!m.has(projectId)) m.set(projectId, { projectId, code, name, budget: 0, used: 0 });
+    if (!m.has(projectId)) {
+      const rk = `${userId}|${projectId}`;
+      m.set(projectId, {
+        projectId,
+        code,
+        name,
+        budget: 0,
+        used: 0,
+        unitPriceMm: latestRateByUserProject.get(rk)?.unitPriceMm ?? 0,
+      });
+    }
     return m.get(projectId)!;
   };
-  for (const b of budgetRows) touch(b.userId, b.projectId, b.code, b.name).budget = Number(b.hours);
+  for (const b of budgetRows) {
+    const p = touch(b.userId, b.projectId, b.code, b.name);
+    p.budget = Number(b.hours);
+    if (b.unitPriceMm != null) p.unitPriceMm = Number(b.unitPriceMm);
+  }
   for (const e of entryRows) touch(e.userId, e.projectId, e.code, e.name).used = Number(e.hours);
 
   return memberRows.map((u) => {
@@ -98,7 +139,12 @@ export async function monthOverview(year: number, month: number): Promise<Overvi
       usedHours: round2(per.reduce((s, p) => s + p.used, 0)),
       attendanceHours: round2(att.hours),
       daysLogged: att.days,
-      byProject: per.map((p) => ({ ...p, budget: round2(p.budget), used: round2(p.used) })),
+      byProject: per.map((p) => ({
+        ...p,
+        budget: round2(p.budget),
+        used: round2(p.used),
+        unitPriceMm: round2(p.unitPriceMm),
+      })),
     };
   });
 }
@@ -163,8 +209,14 @@ export async function monthOverviewForPeriods(
       for (const p of byProject) {
         const current = projectMap.get(p.projectId);
         if (current) {
+          const prevUsed = current.used;
+          const nextUsed = round2(current.used + p.used);
+          const weightedRate = nextUsed > 0
+            ? round2(((current.unitPriceMm * prevUsed) + (p.unitPriceMm * p.used)) / nextUsed)
+            : current.unitPriceMm || p.unitPriceMm;
           current.budget = round2(current.budget + p.budget);
-          current.used = round2(current.used + p.used);
+          current.used = nextUsed;
+          current.unitPriceMm = weightedRate;
         } else {
           projectMap.set(p.projectId, { ...p });
         }

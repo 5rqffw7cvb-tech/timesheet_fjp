@@ -1,34 +1,64 @@
 import * as XLSX from "xlsx";
 import type { OverviewRow } from "@/lib/adminData";
-import { calcBilling } from "@/lib/billing";
+import { calcBillingByProjects } from "@/lib/billing";
 
 export function buildBillingWorkbook(year: number, month: number, rows: OverviewRow[]) {
+  const title = `${year}/${String(month).padStart(2, "0")} Customer Billing`;
+  return buildWorkbookCore(title, rows);
+}
+
+export function buildBillingWorkbookWithLabel(periodLabel: string, rows: OverviewRow[]) {
+  return buildWorkbookCore(`${periodLabel} Customer Billing`, rows);
+}
+
+function buildWorkbookCore(title: string, rows: OverviewRow[]) {
   const wb = XLSX.utils.book_new();
 
-  const title = `${year}/${String(month).padStart(2, "0")} Customer Billing`;
   const summary: any[][] = [
     [title],
     ["Rule", "< 140h * factor: deduct", "> 180h * factor: charge", "140h~180h: no adjustment"],
+    ["Note", "If unit price = 0, adjustment amount will be 0"],
     [],
-    ["No", "Member", "Factor", "Unit Price", "Actual Hours", "Lower Bound", "Upper Bound", "Shortage Hours", "Overtime Hours", "Adjustment Hours", "Adjustment MM", "Adjustment Amount", "Status"],
+    ["No", "Member", "Factor", "Unit Price", "Actual Hours", "Lower Bound", "Upper Bound", "Shortage Hours", "Overtime Hours", "Adjustment Hours", "Adjustment MM", "Adjustment Amount (VND)", "Status"],
   ];
 
-  const startRow = 5;
+  const startRow = 6;
+  let sumActual = 0;
+  let sumShortage = 0;
+  let sumOvertime = 0;
+  let sumAdjustHours = 0;
+  let sumAdjustMm = 0;
+  let sumAmount = 0;
+
   rows.forEach((row, i) => {
     const excelRow = startRow + i;
+    const b = calcBillingByProjects(
+      row.usedHours,
+      row.billingFactor,
+      row.byProject.map((p) => ({ projectId: p.projectId, hours: p.used, unitPriceMm: p.unitPriceMm })),
+      row.billingUnitPrice,
+    );
+
+    sumActual += row.usedHours;
+    sumShortage += b.shortageHours;
+    sumOvertime += b.overtimeHours;
+    sumAdjustHours += b.adjustmentHours;
+    sumAdjustMm += b.adjustmentMm;
+    sumAmount += b.adjustmentAmount;
+
     summary.push([
       i + 1,
       row.fullName,
       row.billingFactor,
-      row.billingUnitPrice,
+      b.weightedUnitPrice,
       row.usedHours,
-      { f: `140*C${excelRow}` },
-      { f: `180*C${excelRow}` },
-      { f: `MAX(0,F${excelRow}-E${excelRow})` },
-      { f: `MAX(0,E${excelRow}-G${excelRow})` },
-      { f: `I${excelRow}-H${excelRow}` },
-      { f: `J${excelRow}/180` },
-      { f: `K${excelRow}*D${excelRow}` },
+      formulaNumber(`140*C${excelRow}`, b.lowerHours),
+      formulaNumber(`180*C${excelRow}`, b.upperHours),
+      formulaNumber(`MAX(0,F${excelRow}-E${excelRow})`, b.shortageHours),
+      formulaNumber(`MAX(0,E${excelRow}-G${excelRow})`, b.overtimeHours),
+      formulaNumber(`I${excelRow}-H${excelRow}`, b.adjustmentHours),
+      formulaNumber(`J${excelRow}/180`, b.adjustmentMm),
+      formulaNumber(`K${excelRow}*D${excelRow}`, b.adjustmentAmount),
       row.status,
     ]);
   });
@@ -39,14 +69,14 @@ export function buildBillingWorkbook(year: number, month: number, rows: Overview
     "",
     "",
     "",
-    { f: `SUM(E${startRow}:E${totalRow - 1})` },
+    formulaNumber(`SUM(E${startRow}:E${totalRow - 1})`, round2(sumActual)),
     "",
     "",
-    { f: `SUM(H${startRow}:H${totalRow - 1})` },
-    { f: `SUM(I${startRow}:I${totalRow - 1})` },
-    { f: `SUM(J${startRow}:J${totalRow - 1})` },
-    { f: `SUM(K${startRow}:K${totalRow - 1})` },
-    { f: `SUM(L${startRow}:L${totalRow - 1})` },
+    formulaNumber(`SUM(H${startRow}:H${totalRow - 1})`, round2(sumShortage)),
+    formulaNumber(`SUM(I${startRow}:I${totalRow - 1})`, round2(sumOvertime)),
+    formulaNumber(`SUM(J${startRow}:J${totalRow - 1})`, round2(sumAdjustHours)),
+    formulaNumber(`SUM(K${startRow}:K${totalRow - 1})`, round4(sumAdjustMm)),
+    formulaNumber(`SUM(L${startRow}:L${totalRow - 1})`, round0(sumAmount)),
     "",
   ]);
 
@@ -83,6 +113,7 @@ export function buildBillingWorkbook(year: number, month: number, rows: Overview
   for (const row of rows) {
     for (const p of row.byProject) {
       const excelRow = detail.length + 1;
+      const diff = round2(p.used - p.budget);
       detail.push([
         idx++,
         row.fullName,
@@ -90,7 +121,7 @@ export function buildBillingWorkbook(year: number, month: number, rows: Overview
         p.name,
         p.budget,
         p.used,
-        { f: `F${excelRow}-E${excelRow}` },
+        formulaNumber(`F${excelRow}-E${excelRow}`, diff),
       ]);
     }
   }
@@ -114,161 +145,46 @@ export function buildBillingWorkbook(year: number, month: number, rows: Overview
 
   const summaryStats = rows.reduce(
     (acc, r) => {
-      const b = calcBilling({
-        actualHours: r.usedHours,
-        factor: r.billingFactor,
-        unitPrice: r.billingUnitPrice,
-      });
+      const b = calcBillingByProjects(
+        r.usedHours,
+        r.billingFactor,
+        r.byProject.map((p) => ({ projectId: p.projectId, hours: p.used, unitPriceMm: p.unitPriceMm })),
+        r.billingUnitPrice,
+      );
       return {
         under: acc.under + (b.band === "UNDER" ? 1 : 0),
         over: acc.over + (b.band === "OVER" ? 1 : 0),
         amount: acc.amount + b.adjustmentAmount,
+        missingPrice: acc.missingPrice + (b.weightedUnitPrice > 0 ? 0 : 1),
       };
     },
-    { under: 0, over: 0, amount: 0 },
+    { under: 0, over: 0, amount: 0, missingPrice: 0 },
   );
 
   XLSX.utils.sheet_add_aoa(ws1, [
     ["Members under lower bound", summaryStats.under],
     ["Members over upper bound", summaryStats.over],
-    ["Total adjustment amount", summaryStats.amount],
+    ["Members with unit price = 0", summaryStats.missingPrice],
+    ["Total adjustment amount", round0(summaryStats.amount)],
   ], { origin: "O4" });
 
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Uint8Array;
 }
 
-export function buildBillingWorkbookWithLabel(periodLabel: string, rows: OverviewRow[]) {
-  const wb = XLSX.utils.book_new();
+function formulaNumber(formula: string, value: number) {
+  return { t: "n", f: formula, v: value };
+}
 
-  const summary: any[][] = [
-    [`${periodLabel} Customer Billing`],
-    ["Rule", "< 140h * factor: deduct", "> 180h * factor: charge", "140h~180h: no adjustment"],
-    [],
-    ["No", "Member", "Factor", "Unit Price", "Actual Hours", "Lower Bound", "Upper Bound", "Shortage Hours", "Overtime Hours", "Adjustment Hours", "Adjustment MM", "Adjustment Amount", "Status"],
-  ];
+function round0(n: number) {
+  return Math.round(n);
+}
 
-  const startRow = 5;
-  rows.forEach((row, i) => {
-    const excelRow = startRow + i;
-    summary.push([
-      i + 1,
-      row.fullName,
-      row.billingFactor,
-      row.billingUnitPrice,
-      row.usedHours,
-      { f: `140*C${excelRow}` },
-      { f: `180*C${excelRow}` },
-      { f: `MAX(0,F${excelRow}-E${excelRow})` },
-      { f: `MAX(0,E${excelRow}-G${excelRow})` },
-      { f: `I${excelRow}-H${excelRow}` },
-      { f: `J${excelRow}/180` },
-      { f: `K${excelRow}*D${excelRow}` },
-      row.status,
-    ]);
-  });
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
 
-  const totalRow = startRow + rows.length;
-  summary.push([
-    "TOTAL",
-    "",
-    "",
-    "",
-    { f: `SUM(E${startRow}:E${totalRow - 1})` },
-    "",
-    "",
-    { f: `SUM(H${startRow}:H${totalRow - 1})` },
-    { f: `SUM(I${startRow}:I${totalRow - 1})` },
-    { f: `SUM(J${startRow}:J${totalRow - 1})` },
-    { f: `SUM(K${startRow}:K${totalRow - 1})` },
-    { f: `SUM(L${startRow}:L${totalRow - 1})` },
-    "",
-  ]);
-
-  const ws1 = XLSX.utils.aoa_to_sheet(summary);
-  ws1["!cols"] = [
-    { wch: 6 },
-    { wch: 24 },
-    { wch: 10 },
-    { wch: 14 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 14 },
-    { wch: 14 },
-    { wch: 15 },
-    { wch: 12 },
-    { wch: 18 },
-    { wch: 12 },
-  ];
-
-  XLSX.utils.book_append_sheet(wb, ws1, "稼働情報");
-
-  const detail: any[][] = [[
-    "No",
-    "Member",
-    "Project Code",
-    "Project Name",
-    "Budget Hours",
-    "Used Hours",
-    "Diff (Used-Budget)",
-  ]];
-
-  let idx = 1;
-  for (const row of rows) {
-    for (const p of row.byProject) {
-      const excelRow = detail.length + 1;
-      detail.push([
-        idx++,
-        row.fullName,
-        p.code,
-        p.name,
-        p.budget,
-        p.used,
-        { f: `F${excelRow}-E${excelRow}` },
-      ]);
-    }
-  }
-
-  if (detail.length === 1) {
-    detail.push(["", "", "", "No project data", "", "", ""]);
-  }
-
-  const ws2 = XLSX.utils.aoa_to_sheet(detail);
-  ws2["!cols"] = [
-    { wch: 6 },
-    { wch: 24 },
-    { wch: 14 },
-    { wch: 32 },
-    { wch: 12 },
-    { wch: 12 },
-    { wch: 16 },
-  ];
-
-  XLSX.utils.book_append_sheet(wb, ws2, "契約工数");
-
-  const summaryStats = rows.reduce(
-    (acc, r) => {
-      const b = calcBilling({
-        actualHours: r.usedHours,
-        factor: r.billingFactor,
-        unitPrice: r.billingUnitPrice,
-      });
-      return {
-        under: acc.under + (b.band === "UNDER" ? 1 : 0),
-        over: acc.over + (b.band === "OVER" ? 1 : 0),
-        amount: acc.amount + b.adjustmentAmount,
-      };
-    },
-    { under: 0, over: 0, amount: 0 },
-  );
-
-  XLSX.utils.sheet_add_aoa(ws1, [
-    ["Members under lower bound", summaryStats.under],
-    ["Members over upper bound", summaryStats.over],
-    ["Total adjustment amount", summaryStats.amount],
-  ], { origin: "O4" });
-
-  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Uint8Array;
+function round4(n: number) {
+  return Math.round(n * 10000) / 10000;
 }
 
 export function billingFileName(year: number, month: number) {

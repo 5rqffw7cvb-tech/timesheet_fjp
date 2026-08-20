@@ -110,6 +110,7 @@ export const budgets = pgTable(
     year: integer("year").notNull(),
     month: integer("month").notNull(),
     hours: numeric("hours", { precision: 7, scale: 2 }).notNull(),
+    unitPriceMm: numeric("unit_price_mm", { precision: 12, scale: 2 }),
     note: text("note"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -117,6 +118,25 @@ export const budgets = pgTable(
   (t) => [
     uniqueIndex("budgets_unique").on(t.userId, t.projectId, t.year, t.month),
     index("budgets_period_idx").on(t.year, t.month),
+  ],
+);
+
+/** Đơn giá mặc định theo member × project, có hiệu lực từ tháng chỉ định */
+export const projectRates = pgTable(
+  "project_rates",
+  {
+    id: text("id").primaryKey().$defaultFn(createId),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    effectiveFrom: date("effective_from").notNull(),
+    unitPriceMm: numeric("unit_price_mm", { precision: 12, scale: 2 }).notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("project_rates_unique").on(t.userId, t.projectId, t.effectiveFrom),
+    index("project_rates_lookup_idx").on(t.userId, t.projectId, t.effectiveFrom),
   ],
 );
 
@@ -257,6 +277,11 @@ export const budgetsRelations = relations(budgets, ({ one }) => ({
   project: one(projects, { fields: [budgets.projectId], references: [projects.id] }),
 }));
 
+export const projectRatesRelations = relations(projectRates, ({ one }) => ({
+  user: one(users, { fields: [projectRates.userId], references: [users.id] }),
+  project: one(projects, { fields: [projectRates.projectId], references: [projects.id] }),
+}));
+
 export const timeEntriesRelations = relations(timeEntries, ({ one }) => ({
   user: one(users, { fields: [timeEntries.userId], references: [users.id] }),
   project: one(projects, { fields: [timeEntries.projectId], references: [projects.id] }),
@@ -276,6 +301,7 @@ export type Project = typeof projects.$inferSelect;
 export type ProjectAssignment = typeof projectAssignments.$inferSelect;
 export type WorkType = typeof workTypes.$inferSelect;
 export type Budget = typeof budgets.$inferSelect;
+export type ProjectRate = typeof projectRates.$inferSelect;
 export type DayLog = typeof dayLogs.$inferSelect;
 export type TimeEntry = typeof timeEntries.$inferSelect;
 export type MonthlyReport = typeof monthlyReports.$inferSelect;

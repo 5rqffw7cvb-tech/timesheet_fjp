@@ -7,9 +7,10 @@ import { db } from "@/db";
 import {
   budgets, monthlyReports, users, projects, workTypes,
   monthSettings, holidays, orgSettings, auditLogs, companies,
-  projectAssignments,
+  projectAssignments, projectRates,
 } from "@/db/schema";
 import { requireAdmin, hashPassword } from "@/lib/auth";
+import { ymd } from "@/lib/dates";
 
 export interface ActionResult { ok: boolean; error?: string; message?: string; id?: string }
 
@@ -18,26 +19,62 @@ const fail = (error: string): ActionResult => ({ ok: false, error });
 /* ─────────────────────────── Budget ─────────────────────────── */
 
 export async function setBudgetAction(
-  userId: string, projectId: string, year: number, month: number, hours: number,
+  userId: string,
+  projectId: string,
+  year: number,
+  month: number,
+  hours: number,
+  unitPriceMm?: number,
 ): Promise<ActionResult> {
   await requireAdmin();
   if (!Number.isFinite(hours) || hours < 0 || hours > 9999) return fail("Số giờ không hợp lệ");
+  if (unitPriceMm != null && (!Number.isFinite(unitPriceMm) || unitPriceMm < 0 || unitPriceMm > 1_000_000_000)) {
+    return fail("Đơn giá không hợp lệ");
+  }
 
-  if (hours === 0) {
+  const normalizedRate = unitPriceMm == null ? null : Math.round(unitPriceMm * 100) / 100;
+  const effectiveFrom = ymd(year, month, 1);
+
+  if (hours === 0 && (normalizedRate == null || normalizedRate === 0)) {
     await db.delete(budgets).where(and(
       eq(budgets.userId, userId), eq(budgets.projectId, projectId),
       eq(budgets.year, year), eq(budgets.month, month),
     ));
   } else {
     await db.insert(budgets)
-      .values({ userId, projectId, year, month, hours: hours.toFixed(2) })
+      .values({
+        userId,
+        projectId,
+        year,
+        month,
+        hours: hours.toFixed(2),
+        unitPriceMm: normalizedRate == null ? null : normalizedRate.toFixed(2),
+      })
       .onConflictDoUpdate({
         target: [budgets.userId, budgets.projectId, budgets.year, budgets.month],
-        set: { hours: hours.toFixed(2), updatedAt: new Date() },
+        set: {
+          hours: hours.toFixed(2),
+          unitPriceMm: normalizedRate == null ? null : normalizedRate.toFixed(2),
+          updatedAt: new Date(),
+        },
       });
     await db.insert(projectAssignments)
       .values({ userId, projectId })
       .onConflictDoNothing({ target: [projectAssignments.userId, projectAssignments.projectId] });
+
+    if (normalizedRate != null && normalizedRate > 0) {
+      await db.insert(projectRates)
+        .values({
+          userId,
+          projectId,
+          effectiveFrom,
+          unitPriceMm: normalizedRate.toFixed(2),
+        })
+        .onConflictDoUpdate({
+          target: [projectRates.userId, projectRates.projectId, projectRates.effectiveFrom],
+          set: { unitPriceMm: normalizedRate.toFixed(2), updatedAt: new Date() },
+        });
+    }
   }
   revalidatePath("/admin/budgets");
   revalidatePath("/admin");
@@ -55,10 +92,17 @@ export async function copyBudgetsAction(
 
   for (const b of src) {
     await db.insert(budgets)
-      .values({ userId: b.userId, projectId: b.projectId, year: toYear, month: toMonth, hours: b.hours })
+      .values({
+        userId: b.userId,
+        projectId: b.projectId,
+        year: toYear,
+        month: toMonth,
+        hours: b.hours,
+        unitPriceMm: b.unitPriceMm,
+      })
       .onConflictDoUpdate({
         target: [budgets.userId, budgets.projectId, budgets.year, budgets.month],
-        set: { hours: b.hours, updatedAt: new Date() },
+        set: { hours: b.hours, unitPriceMm: b.unitPriceMm, updatedAt: new Date() },
       });
   }
   revalidatePath("/admin/budgets");

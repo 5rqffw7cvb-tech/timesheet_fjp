@@ -5,7 +5,7 @@ import { todayParts } from "@/lib/dates";
 import MonthNav from "@/components/MonthNav";
 import StatusBadge from "@/components/StatusBadge";
 import BudgetBar from "@/components/BudgetBar";
-import { calcBilling } from "@/lib/billing";
+import { calcBillingByProjects } from "@/lib/billing";
 
 export const dynamic = "force-dynamic";
 
@@ -33,11 +33,12 @@ export default async function AdminDashboard({
     { budget: 0, used: 0, submitted: 0, approved: 0 },
   );
 
-  const billingTotal = rows.reduce((s, r) => s + calcBilling({
-    actualHours: r.usedHours,
-    factor: r.billingFactor,
-    unitPrice: r.billingUnitPrice,
-  }).adjustmentAmount, 0);
+  const billingTotal = rows.reduce((s, r) => s + calcBillingByProjects(
+    r.usedHours,
+    r.billingFactor,
+    r.byProject.map((p) => ({ projectId: p.projectId, hours: p.used, unitPriceMm: p.unitPriceMm })),
+    r.billingUnitPrice,
+  ).adjustmentAmount, 0);
 
   return (
     <div className="space-y-4">

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import MonthNav from "@/components/MonthNav";
 import StatusBadge from "@/components/StatusBadge";
 import type { OverviewRow } from "@/lib/adminData";
-import { calcBilling } from "@/lib/billing";
+import { calcBillingByProjects } from "@/lib/billing";
 
 export default function ExportPanel({
   year, month, rows, workingDays, selectedPeriods, selectedProjectIds, projects,
@@ -28,11 +28,12 @@ export default function ExportPanel({
   const withData = rows.filter((r) => r.usedHours > 0 || r.attendanceHours > 0);
   const billing = withData.map((r) => ({
     member: r,
-    calc: calcBilling({
-      actualHours: r.usedHours,
-      factor: r.billingFactor,
-      unitPrice: r.billingUnitPrice,
-    }),
+    calc: calcBillingByProjects(
+      r.usedHours,
+      r.billingFactor,
+      r.byProject.map((p) => ({ projectId: p.projectId, hours: p.used, unitPriceMm: p.unitPriceMm })),
+      r.billingUnitPrice,
+    ),
   }));
   const totals = billing.reduce(
     (a, b) => ({
@@ -203,7 +204,7 @@ export default function ExportPanel({
             <tr>
               <th>Member</th><th className="text-right">Giờ</th><th className="text-right">Công số</th>
               <th className="text-right">Lower</th><th className="text-right">Upper</th><th className="text-right">Giờ thiếu</th>
-              <th className="text-right">Giờ vượt</th><th className="text-right">Đơn giá</th><th className="text-right">Điều chỉnh</th>
+              <th className="text-right">Giờ vượt</th><th className="text-right">Đơn giá TB</th><th className="text-right">Điều chỉnh</th>
             </tr>
           </thead>
           <tbody>
@@ -219,7 +220,7 @@ export default function ExportPanel({
                 <td className="text-right num">{calc.upperHours.toFixed(2)}</td>
                 <td className="text-right num">{calc.shortageHours.toFixed(2)}</td>
                 <td className="text-right num">{calc.overtimeHours.toFixed(2)}</td>
-                <td className="text-right num">{member.billingUnitPrice.toLocaleString("en-US")}</td>
+                <td className="text-right num">{calc.weightedUnitPrice.toLocaleString("en-US")}</td>
                 <td className={`text-right num font-medium ${calc.adjustmentAmount < 0 ? "text-rose-600" : calc.adjustmentAmount > 0 ? "text-emerald-600" : "text-slate-500"}`}>
                   {calc.adjustmentAmount.toLocaleString("en-US")}
                 </td>
