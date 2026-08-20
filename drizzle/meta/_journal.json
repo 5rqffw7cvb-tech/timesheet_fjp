@@ -15,6 +15,13 @@
       "when": 1787152793795,
       "tag": "0001_needy_katie_power",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788211200000,
+      "tag": "0002_billing_fields",
+      "breakpoints": true
     }
   ]
 }

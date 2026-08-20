@@ -19,6 +19,8 @@ export default async function MembersPage() {
         id: u.id, username: u.username, fullName: u.fullName,
         displayName: u.displayName, employeeCode: u.employeeCode,
         roleTitle: u.roleTitle, location: u.location, role: u.role,
+        billingUnitPrice: Number(u.billingUnitPrice ?? 0),
+        billingFactor: Number(u.billingFactor ?? 1),
         isActive: u.isActive, companyId: u.companyId, mustChangePw: u.mustChangePw,
       }))}
       companies={companyRows.map((c) => ({ id: c.id, name: c.name }))}

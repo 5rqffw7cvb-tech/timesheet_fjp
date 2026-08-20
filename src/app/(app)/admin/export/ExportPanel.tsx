@@ -4,6 +4,7 @@ import { useState } from "react";
 import MonthNav from "@/components/MonthNav";
 import StatusBadge from "@/components/StatusBadge";
 import type { OverviewRow } from "@/lib/adminData";
+import { calcBilling } from "@/lib/billing";
 
 export default function ExportPanel({
   year, month, rows, workingDays,
@@ -15,6 +16,22 @@ export default function ExportPanel({
 
   const approved = rows.filter((r) => r.status === "APPROVED");
   const withData = rows.filter((r) => r.usedHours > 0 || r.attendanceHours > 0);
+  const billing = withData.map((r) => ({
+    member: r,
+    calc: calcBilling({
+      actualHours: r.usedHours,
+      factor: r.billingFactor,
+      unitPrice: r.billingUnitPrice,
+    }),
+  }));
+  const totals = billing.reduce(
+    (a, b) => ({
+      amount: a.amount + b.calc.adjustmentAmount,
+      under: a.under + (b.calc.band === "UNDER" ? 1 : 0),
+      over: a.over + (b.calc.band === "OVER" ? 1 : 0),
+    }),
+    { amount: 0, under: 0, over: 0 },
+  );
 
   async function download(url: string, key: string) {
     setBusy(key);
@@ -55,6 +72,14 @@ export default function ExportPanel({
         </span>
         <div className="ml-auto flex gap-2">
           <button className="btn-secondary" disabled={busy !== null || withData.length === 0}
+                  onClick={() => download(`/api/export/billing?year=${year}&month=${month}&scope=all`, "billing-all")}>
+            {busy === "billing-all" ? "Đang tạo…" : "Tải Billing (all)"}
+          </button>
+          <button className="btn-secondary" disabled={busy !== null || approved.length === 0}
+                  onClick={() => download(`/api/export/billing?year=${year}&month=${month}&scope=approved`, "billing-approved")}>
+            {busy === "billing-approved" ? "Đang tạo…" : "Tải Billing (approved)"}
+          </button>
+          <button className="btn-secondary" disabled={busy !== null || withData.length === 0}
                   onClick={() => download(`/api/export?year=${year}&month=${month}&scope=all`, "all")}>
             {busy === "all" ? "Đang tạo…" : `Tải tất cả có dữ liệu (${withData.length})`}
           </button>
@@ -68,6 +93,52 @@ export default function ExportPanel({
       {msg && (
         <div className="card border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">{msg}</div>
       )}
+
+      <div className="grid gap-3 md:grid-cols-4">
+        <Metric label="Member có dữ liệu" value={String(withData.length)} />
+        <Metric label="Dưới ngưỡng 140h*công số" value={String(totals.under)} tone={totals.under ? "warn" : "ok"} />
+        <Metric label="Vượt ngưỡng 180h*công số" value={String(totals.over)} tone={totals.over ? "warn" : "ok"} />
+        <Metric label="Tổng tiền điều chỉnh" value={totals.amount.toLocaleString("en-US")} />
+      </div>
+
+      <div className="card overflow-hidden">
+        <div className="card-header">
+          <h2 className="card-title">Dashboard điều chỉnh theo rule 140/180</h2>
+          <span className="text-xs text-slate-400">adjustment = (max(0, hours-180*f) - max(0, 140*f-hours)) / 180 * đơn giá</span>
+        </div>
+        <table className="data">
+          <thead>
+            <tr>
+              <th>Member</th><th className="text-right">Giờ</th><th className="text-right">Công số</th>
+              <th className="text-right">Lower</th><th className="text-right">Upper</th><th className="text-right">Giờ thiếu</th>
+              <th className="text-right">Giờ vượt</th><th className="text-right">Đơn giá</th><th className="text-right">Điều chỉnh</th>
+            </tr>
+          </thead>
+          <tbody>
+            {billing.map(({ member, calc }) => (
+              <tr key={member.userId}>
+                <td>
+                  <div className="font-medium text-slate-700">{member.fullName}</div>
+                  <div className="text-xs text-slate-400">{member.displayName || member.username}</div>
+                </td>
+                <td className="text-right num">{member.usedHours.toFixed(2)}</td>
+                <td className="text-right num">{member.billingFactor.toFixed(2)}</td>
+                <td className="text-right num">{calc.lowerHours.toFixed(2)}</td>
+                <td className="text-right num">{calc.upperHours.toFixed(2)}</td>
+                <td className="text-right num">{calc.shortageHours.toFixed(2)}</td>
+                <td className="text-right num">{calc.overtimeHours.toFixed(2)}</td>
+                <td className="text-right num">{member.billingUnitPrice.toLocaleString("en-US")}</td>
+                <td className={`text-right num font-medium ${calc.adjustmentAmount < 0 ? "text-rose-600" : calc.adjustmentAmount > 0 ? "text-emerald-600" : "text-slate-500"}`}>
+                  {calc.adjustmentAmount.toLocaleString("en-US")}
+                </td>
+              </tr>
+            ))}
+            {billing.length === 0 && (
+              <tr><td colSpan={9} className="py-8 text-center text-slate-400">Không có dữ liệu trong tháng này.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       <div className="card overflow-hidden">
         <div className="card-header">
@@ -117,6 +188,15 @@ export default function ExportPanel({
           <li>Mỗi sheet tuần chứa tối đa 20 dòng công việc. Nếu một tuần có nhiều hơn 20 tổ hợp project × 工種, app sẽ báo cảnh báo khi xuất.</li>
         </ul>
       </div>
+    </div>
+  );
+}
+
+function Metric({ label, value, tone }: { label: string; value: string; tone?: "ok" | "warn" }) {
+  return (
+    <div className="card px-4 py-3">
+      <div className="text-[11px] text-slate-500">{label}</div>
+      <div className={`text-xl font-semibold num ${tone === "warn" ? "text-amber-600" : "text-slate-800"}`}>{value}</div>
     </div>
   );
 }

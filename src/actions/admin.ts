@@ -148,6 +148,8 @@ const memberSchema = z.object({
   employeeCode: z.string().max(30).optional(),
   roleTitle: z.string().max(60).optional(),
   location: z.string().max(30).optional(),
+  billingUnitPrice: z.coerce.number().min(0).max(1_000_000_000).default(0),
+  billingFactor: z.coerce.number().min(0.1).max(10).default(1),
   companyId: z.string().optional(),
   role: z.enum(["ADMIN", "MEMBER"]),
 });
@@ -168,6 +170,8 @@ export async function createMemberAction(input: unknown, password: string): Prom
     employeeCode: parsed.data.employeeCode || null,
     roleTitle: parsed.data.roleTitle || null,
     location: parsed.data.location || null,
+    billingUnitPrice: parsed.data.billingUnitPrice.toFixed(2),
+    billingFactor: parsed.data.billingFactor.toFixed(2),
     companyId: parsed.data.companyId || null,
     passwordHash: await hashPassword(password),
     mustChangePw: true,
@@ -191,6 +195,8 @@ export async function updateMemberAction(id: string, input: unknown): Promise<Ac
     employeeCode: parsed.data.employeeCode || null,
     roleTitle: parsed.data.roleTitle || null,
     location: parsed.data.location || null,
+    billingUnitPrice: parsed.data.billingUnitPrice.toFixed(2),
+    billingFactor: parsed.data.billingFactor.toFixed(2),
     companyId: parsed.data.companyId || null,
     updatedAt: new Date(),
   }).where(eq(users.id, id));

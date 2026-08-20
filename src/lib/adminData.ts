@@ -12,6 +12,8 @@ export interface OverviewRow {
   displayName: string | null;
   username: string;
   roleTitle: string | null;
+  billingUnitPrice: number;
+  billingFactor: number;
   status: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
   submittedAt: Date | null;
   memberNote: string | null;
@@ -86,6 +88,8 @@ export async function monthOverview(year: number, month: number): Promise<Overvi
       displayName: u.displayName,
       username: u.username,
       roleTitle: u.roleTitle,
+      billingUnitPrice: Number(u.billingUnitPrice ?? 0),
+      billingFactor: Number(u.billingFactor ?? 1),
       status: report?.status ?? "DRAFT",
       submittedAt: report?.submittedAt ?? null,
       memberNote: report?.memberNote ?? null,

@@ -9,12 +9,14 @@ import {
 interface Member {
   id: string; username: string; fullName: string; displayName: string | null;
   employeeCode: string | null; roleTitle: string | null; location: string | null;
+  billingUnitPrice: number; billingFactor: number;
   role: "ADMIN" | "MEMBER"; isActive: boolean; companyId: string | null; mustChangePw: boolean;
 }
 
 const EMPTY: Omit<Member, "id" | "isActive" | "mustChangePw"> = {
   username: "", fullName: "", displayName: "", employeeCode: "",
-  roleTitle: "", location: "日本", role: "MEMBER", companyId: null,
+  roleTitle: "", location: "日本", billingUnitPrice: 0, billingFactor: 1,
+  role: "MEMBER", companyId: null,
 };
 
 export default function MemberTable({
@@ -73,7 +75,7 @@ export default function MemberTable({
           <thead>
             <tr>
               <th>Họ tên (氏名)</th><th>Đăng nhập</th><th>Tên file</th>
-              <th>Vai trò</th><th>支払先</th><th>Nơi làm</th>
+              <th>Vai trò</th><th>支払先</th><th>Đơn giá</th><th>Công số</th><th>Nơi làm</th>
               <th>Quyền</th><th>Trạng thái</th><th></th>
             </tr>
           </thead>
@@ -85,6 +87,8 @@ export default function MemberTable({
                 <td className="num text-slate-500">{m.displayName ?? "—"}</td>
                 <td className="text-slate-500">{m.roleTitle ?? "—"}</td>
                 <td className="num text-slate-500">{m.employeeCode ?? "—"}</td>
+                <td className="num text-slate-500">{m.billingUnitPrice ? m.billingUnitPrice.toLocaleString("en-US") : "—"}</td>
+                <td className="num text-slate-500">{m.billingFactor.toFixed(2)}</td>
                 <td className="text-slate-500">{m.location ?? "—"}</td>
                 <td>
                   <span className={`badge ${m.role === "ADMIN"
@@ -127,6 +131,8 @@ function MemberForm({
     employeeCode: member?.employeeCode ?? "",
     roleTitle: member?.roleTitle ?? "",
     location: member?.location ?? "日本",
+    billingUnitPrice: member?.billingUnitPrice ?? 0,
+    billingFactor: member?.billingFactor ?? 1,
     role: member?.role ?? ("MEMBER" as "ADMIN" | "MEMBER"),
     companyId: member?.companyId ?? companies[0]?.id ?? "",
   });
@@ -170,6 +176,27 @@ function MemberForm({
         </Field>
         <Field label="Vai trò (Front SE / BA / PM…)">
           <input className="input" value={form.roleTitle} onChange={(e) => set("roleTitle", e.target.value)} />
+        </Field>
+        <Field label="Đơn giá (VND / MM)">
+          <input
+            className="input num"
+            type="number"
+            min={0}
+            step="1000"
+            value={String(form.billingUnitPrice)}
+            onChange={(e) => set("billingUnitPrice", e.target.value)}
+          />
+        </Field>
+        <Field label="Công số">
+          <input
+            className="input num"
+            type="number"
+            min={0.1}
+            max={10}
+            step="0.01"
+            value={String(form.billingFactor)}
+            onChange={(e) => set("billingFactor", e.target.value)}
+          />
         </Field>
         <Field label="Nơi làm việc">
           <select className="select" value={form.location} onChange={(e) => set("location", e.target.value)}>

@@ -5,6 +5,7 @@ import { todayParts } from "@/lib/dates";
 import MonthNav from "@/components/MonthNav";
 import StatusBadge from "@/components/StatusBadge";
 import BudgetBar from "@/components/BudgetBar";
+import { calcBilling } from "@/lib/billing";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,12 @@ export default async function AdminDashboard({
     { budget: 0, used: 0, submitted: 0, approved: 0 },
   );
 
+  const billingTotal = rows.reduce((s, r) => s + calcBilling({
+    actualHours: r.usedHours,
+    factor: r.billingFactor,
+    unitPrice: r.billingUnitPrice,
+  }).adjustmentAmount, 0);
+
   return (
     <div className="space-y-4">
       <div className="card flex flex-wrap items-center gap-3 px-4 py-3">
@@ -40,6 +47,7 @@ export default async function AdminDashboard({
         <Stat label="Đã nộp" value={`${totals.submitted}/${rows.length}`} />
         <Stat label="Đã chốt" value={`${totals.approved}/${rows.length}`} />
         <Stat label="Tổng giờ" value={totals.used.toFixed(1)} sub={`/ ${totals.budget.toFixed(1)}h budget`} />
+        <Stat label="Điều chỉnh billing" value={billingTotal.toLocaleString("en-US")} />
         <Stat label="所定日数" value={String(workingDays)} />
         <div className="ml-auto flex gap-2">
           <Link href={`/admin/budgets?year=${year}&month=${month}`} className="btn-secondary btn-sm">Set budget</Link>

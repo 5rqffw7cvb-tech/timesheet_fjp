@@ -86,6 +86,8 @@ export const users = pgTable(
     employeeCode: text("employee_code"),            // 支払先コード
     roleTitle: text("role_title"),                  // Front SE / BA / PM ...
     location: text("location"),                     // 日本 / ベトナム
+    billingUnitPrice: numeric("billing_unit_price", { precision: 12, scale: 2 }).notNull().default("0"),
+    billingFactor: numeric("billing_factor", { precision: 6, scale: 2 }).notNull().default("1"),
     role: roleEnum("role").notNull().default("MEMBER"),
     isActive: boolean("is_active").notNull().default(true),
     mustChangePw: boolean("must_change_pw").notNull().default(true),

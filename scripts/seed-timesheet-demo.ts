@@ -7,6 +7,7 @@ import {
   monthlyReports,
   monthSettings,
   projects,
+  projectAssignments,
   timeEntries,
   users,
   workTypes,
@@ -54,6 +55,12 @@ async function main() {
         .onConflictDoUpdate({
           target: [budgets.userId, budgets.projectId, budgets.year, budgets.month],
           set: { hours: "20.00", updatedAt: new Date() },
+        });
+
+      await db.insert(projectAssignments)
+        .values({ userId: user.id, projectId: project.id })
+        .onConflictDoNothing({
+          target: [projectAssignments.userId, projectAssignments.projectId],
         });
     }
 
