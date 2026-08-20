@@ -21,8 +21,10 @@ export default function ExportPanel({
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [monthPopupOpen, setMonthPopupOpen] = useState(false);
   const [months, setMonths] = useState<string[]>(selectedPeriods.length ? selectedPeriods : [`${year}-${String(month).padStart(2, "0")}`]);
-  const [projectIds, setProjectIds] = useState<string[]>(selectedProjectIds);
+  const [projectId, setProjectId] = useState<string>(selectedProjectIds[0] ?? "");
 
   const approved = rows.filter((r) => r.status === "APPROVED");
   const withData = rows.filter((r) => r.usedHours > 0 || r.attendanceHours > 0);
@@ -45,7 +47,9 @@ export default function ExportPanel({
   );
 
   const monthChoices = buildMonthChoices(year, month, 18);
-  const isWeeklyCompatible = months.length === 1 && projectIds.length === 0;
+  const recentMonthChoices = monthChoices.slice(0, 6);
+  const extendedMonthChoices = monthChoices.slice(6);
+  const isWeeklyCompatible = months.length === 1 && !projectId;
 
   async function download(url: string, key: string) {
     setBusy(key);
@@ -86,15 +90,16 @@ export default function ExportPanel({
     qs.set("year", String(year));
     qs.set("month", String(month));
     qs.set("months", months.join(","));
-    if (projectIds.length) qs.set("projects", projectIds.join(","));
+    if (projectId) qs.set("projects", projectId);
     router.push(`/admin/export?${qs.toString()}`);
+    setFilterOpen(false);
   }
 
   function billingUrl(scope: "all" | "approved") {
     const qs = new URLSearchParams();
     qs.set("scope", scope);
     qs.set("months", months.join(","));
-    if (projectIds.length) qs.set("projectIds", projectIds.join(","));
+    if (projectId) qs.set("projectIds", projectId);
     return `/api/export/billing?${qs.toString()}`;
   }
 
@@ -102,55 +107,93 @@ export default function ExportPanel({
     setMonths((prev) => prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]);
   }
 
-  function toggleProject(id: string) {
-    setProjectIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  }
-
   return (
     <div className="space-y-4">
-      <div className="card p-4">
-        <div className="mb-3 text-sm font-semibold text-slate-700">Điều kiện report</div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div>
-            <div className="mb-2 text-xs font-medium text-slate-500">Chọn 1 hoặc nhiều tháng</div>
-            <div className="grid max-h-44 grid-cols-2 gap-2 overflow-y-auto rounded-md border border-slate-200 p-2">
-              {monthChoices.map((m) => (
+      <div className="card flex items-center gap-3 px-4 py-3">
+        <button className="btn-secondary" onClick={() => setFilterOpen(true)}>Filter</button>
+        <span className="text-sm text-slate-500">
+          Đang xem: {months.length} tháng · {projectId ? "1 project" : "tất cả project"}
+        </span>
+      </div>
+
+      {filterOpen && (
+        <>
+          <div className="fixed inset-0 z-40 bg-slate-900/40" onClick={() => setFilterOpen(false)} />
+          <aside className="fixed inset-y-0 left-0 z-50 w-full max-w-sm overflow-y-auto border-r border-slate-200 bg-white p-4 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-800">Điều kiện report</h2>
+              <button className="btn-ghost btn-sm" onClick={() => setFilterOpen(false)}>Đóng</button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <div className="mb-2 text-xs font-medium text-slate-500">Filter dự án</div>
+                <select
+                  className="select"
+                  value={projectId}
+                  onChange={(e) => setProjectId(e.target.value)}
+                >
+                  <option value="">Tất cả project</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="mb-2 text-xs font-medium text-slate-500">Chọn 1 hoặc nhiều tháng (6 tháng gần nhất)</div>
+                <div className="grid grid-cols-2 gap-2 rounded-md border border-slate-200 p-2">
+                  {recentMonthChoices.map((m) => (
+                    <label key={m} className="flex items-center gap-2 text-sm text-slate-700">
+                      <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={months.includes(m)} onChange={() => toggleMonth(m)} />
+                      <span className="num">{m}</span>
+                    </label>
+                  ))}
+                </div>
+                <button className="btn-ghost btn-sm mt-2" onClick={() => setMonthPopupOpen(true)}>
+                  Chọn thêm tháng...
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4">
+              <button className="btn-primary" onClick={applyFilters}>Áp dụng bộ lọc</button>
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  setMonths([`${year}-${String(month).padStart(2, "0")}`]);
+                  setProjectId("");
+                }}
+              >
+                Reset
+              </button>
+            </div>
+          </aside>
+        </>
+      )}
+
+      {monthPopupOpen && (
+        <>
+          <div className="fixed inset-0 z-[60] bg-slate-900/50" onClick={() => setMonthPopupOpen(false)} />
+          <div className="fixed left-1/2 top-1/2 z-[70] w-[92vw] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-lg border border-slate-200 bg-white p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-800">Chọn thêm tháng</h3>
+              <button className="btn-ghost btn-sm" onClick={() => setMonthPopupOpen(false)}>Đóng</button>
+            </div>
+            <div className="grid max-h-80 grid-cols-2 gap-2 overflow-y-auto rounded-md border border-slate-200 p-2">
+              {extendedMonthChoices.map((m) => (
                 <label key={m} className="flex items-center gap-2 text-sm text-slate-700">
                   <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={months.includes(m)} onChange={() => toggleMonth(m)} />
                   <span className="num">{m}</span>
                 </label>
               ))}
             </div>
-          </div>
-          <div>
-            <div className="mb-2 text-xs font-medium text-slate-500">Filter dự án (bỏ trống = tất cả)</div>
-            <div className="max-h-44 overflow-y-auto rounded-md border border-slate-200 p-2">
-              <div className="space-y-1">
-                {projects.map((p) => (
-                  <label key={p.id} className="flex items-center gap-2 text-sm text-slate-700">
-                    <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={projectIds.includes(p.id)} onChange={() => toggleProject(p.id)} />
-                    <span className="num text-slate-500">{p.code}</span>
-                    <span>{p.name}</span>
-                  </label>
-                ))}
-              </div>
+            <div className="mt-3 flex justify-end">
+              <button className="btn-primary" onClick={() => setMonthPopupOpen(false)}>Xong</button>
             </div>
           </div>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button className="btn-primary" onClick={applyFilters}>Áp dụng bộ lọc</button>
-          <button
-            className="btn-secondary"
-            onClick={() => {
-              setMonths([`${year}-${String(month).padStart(2, "0")}`]);
-              setProjectIds([]);
-            }}
-          >
-            Reset
-          </button>
-          <span className="text-xs text-slate-500">Đang xem: {months.length} tháng, {projectIds.length || "tất cả"} project</span>
-        </div>
-      </div>
+        </>
+      )}
 
       <div className="card flex flex-wrap items-center gap-3 px-4 py-3">
         <MonthNav year={year} month={month} />
