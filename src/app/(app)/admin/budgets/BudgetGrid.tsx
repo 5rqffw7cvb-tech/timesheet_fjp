@@ -165,7 +165,14 @@ export default function BudgetGrid({
                   <tr className="cursor-pointer hover:bg-slate-50" onClick={() => toggleExpand(m.userId)}>
                     <td className="text-center text-slate-400">{isOpen ? "▾" : "▸"}</td>
                     <td>
-                      <div className="font-medium text-slate-700">{m.fullName}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-700">{m.fullName}</span>
+                        {pids.length === 0 && (
+                          <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                            {locale === "ja" ? "未アサイン" : "Idle"}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-slate-400">{m.roleTitle ?? "—"}</div>
                     </td>
                     <td className="text-right num text-slate-500">{pids.length || "—"}</td>
