@@ -19,11 +19,11 @@ export interface DayDraft {
   entries: DraftEntry[];
 }
 
-const DAY_TYPES: { value: DayData["dayType"]; label: string }[] = [
-  { value: "WORK", label: "Ngày làm việc" },
-  { value: "PUBLIC_OFF", label: "公休 — Nghỉ theo lịch" },
-  { value: "SUB_OFF", label: "代休 — Nghỉ bù" },
-  { value: "HOLIDAY_WORK", label: "公出 — Đi làm ngày nghỉ" },
+const DAY_TYPES: { value: DayData["dayType"]; ja: string; en: string }[] = [
+  { value: "WORK", ja: "勤務日", en: "Working day" },
+  { value: "PUBLIC_OFF", ja: "公休", en: "Public holiday" },
+  { value: "SUB_OFF", ja: "代休", en: "Substitute holiday" },
+  { value: "HOLIDAY_WORK", ja: "公出", en: "Holiday work" },
 ];
 
 const LEAVE_PRESETS = [
@@ -101,7 +101,7 @@ export default function DayEditor({
   }, [draft.entries, q, sort, projects, workTypes]);
 
   const dateObj = new Date(day.date + "T00:00:00");
-  const dateLabel = `${WEEKDAY_VI[day.weekday]} · ${String(day.day).padStart(2, "0")}/${String(dateObj.getMonth() + 1).padStart(2, "0")}/${dateObj.getFullYear()}`;
+  const dateLabel = `${(locale === "ja" ? WEEKDAY_JA : WEEKDAY_VI)[day.weekday]} · ${String(day.day).padStart(2, "0")}/${String(dateObj.getMonth() + 1).padStart(2, "0")}/${dateObj.getFullYear()}`;
   const weekdayLabel = locale === "ja" ? WEEKDAY_JA[day.weekday] : WEEKDAY_VI[day.weekday];
 
   return (
@@ -162,16 +162,16 @@ export default function DayEditor({
             <label className="label">{t("timesheetDayType")}</label>
             <select className="select" disabled={readOnly} value={draft.dayType}
                     onChange={(e) => patch({ dayType: e.target.value as DayData["dayType"] })}>
-              {DAY_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {DAY_TYPES.map((t) => <option key={t.value} value={t.value}>{locale === "ja" ? t.ja : t.en}</option>)}
             </select>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="label">{locale === "ja" ? "勤務欄 / 休暇" : "Leave note"}</label>
+                 <label className="label">{locale === "ja" ? "勤務欄 / 休暇" : "Leave note"}</label>
             <input className="input" list="leave-presets" disabled={readOnly}
-                   placeholder="vd: 午前休, 遅刻30分…"
+                   placeholder={locale === "ja" ? "入力: 午前休、遅刻30分…" : "e.g. morning leave, 30 min late…"}
                    value={draft.leaveNote ?? ""}
                    onChange={(e) => patch({ leaveNote: e.target.value || null })} />
             <datalist id="leave-presets">
@@ -190,7 +190,7 @@ export default function DayEditor({
         <div>
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Chi tiết công việc
+              {t("timesheetWorkDetails")}
             </h3>
             <div className="text-xs num">
               <span className="text-slate-500">{locale === "ja" ? "合計: " : "Total: "}</span>
@@ -248,7 +248,7 @@ export default function DayEditor({
                     </td>
                     <td>
                       <input className="input" disabled={readOnly} value={e.description}
-                             placeholder="Mô tả ngắn công việc"
+                             placeholder={locale === "ja" ? "主な作業内容" : "Brief task description"}
                              onChange={(ev) => updateEntry(e.key, { description: ev.target.value })} />
                     </td>
                     <td>
@@ -260,12 +260,12 @@ export default function DayEditor({
                     <td className="text-center">
                       <input type="checkbox" className="h-4 w-4 accent-brand-600"
                              disabled={readOnly} checked={e.isPlan}
-                             title="Đánh dấu là 予定 (kế hoạch), không tính vào tổng thực tế"
+                             title={locale === "ja" ? "予定としてマーク（実績合計には含めません）" : "Mark as planned; exclude from actual total"}
                              onChange={(ev) => updateEntry(e.key, { isPlan: ev.target.checked })} />
                     </td>
                     <td className="text-center">
                       <button className="btn-ghost btn-sm text-rose-500 hover:bg-rose-50"
-                              disabled={readOnly} onClick={() => removeEntry(e.key)} title="Xoá dòng">
+                              disabled={readOnly} onClick={() => removeEntry(e.key)} title={locale === "ja" ? "行を削除" : "Delete row"}>
                         ✕
                       </button>
                     </td>

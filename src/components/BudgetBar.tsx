@@ -17,10 +17,12 @@ export default function BudgetBar({
       {!compact && (
         <div className="flex justify-between text-xs num">
           <span className="text-slate-500">
-            {used.toFixed(1)}h / {budget > 0 ? `${budget.toFixed(1)}h` : "chưa set"}
+              {used.toFixed(1)}h / {budget > 0 ? `${budget.toFixed(1)}h` : (locale === "ja" ? "未設定" : "not set")}
           </span>
           <span className={over ? "font-medium text-rose-600" : near ? "font-medium text-amber-600" : "text-slate-500"}>
-            {budget > 0 ? (over ? `vượt ${Math.abs(remain).toFixed(1)}h` : `còn ${remain.toFixed(1)}h`) : "—"}
+              {budget > 0 ? (over
+                ? `${locale === "ja" ? "超過" : "over"} ${Math.abs(remain).toFixed(1)}h`
+                : `${locale === "ja" ? "残り" : "remaining"} ${remain.toFixed(1)}h`) : "—"}
           </span>
         </div>
       )}

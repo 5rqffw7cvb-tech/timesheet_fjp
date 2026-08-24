@@ -32,7 +32,7 @@ export async function GET(req: Request) {
     : (year && month && month >= 1 && month <= 12 ? [{ year, month }] : []);
 
   if (periods.length === 0) {
-    return NextResponse.json({ error: "Thiếu hoặc sai tham số tháng. Dùng year/month hoặc months=YYYY-MM,YYYY-MM" }, { status: 400 });
+    return NextResponse.json({ error: "Missing or invalid month parameters. Use year/month or months=YYYY-MM,YYYY-MM" }, { status: 400 });
   }
 
   const projectIds = projectIdsRaw
@@ -53,9 +53,9 @@ export async function GET(req: Request) {
 
     if (targets.length === 0) {
       return NextResponse.json(
-        { error: scope === "all" ? "Không có thành viên nào có dữ liệu." : "Chưa có thành viên nào được chốt sổ." },
+        { error: scope === "all" ? "No members have data." : "No members have been approved." },
         { status: 404 },
-      );
+        { error: scope === "all" ? "No members have data." : "No members have been approved." },
     }
 
     const sorted = [...periods].sort((a, b) => (a.year - b.year) || (a.month - b.month));

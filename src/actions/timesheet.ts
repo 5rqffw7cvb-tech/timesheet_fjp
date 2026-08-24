@@ -11,7 +11,7 @@ import { requireUser } from "@/lib/auth";
 import { ensureReport } from "@/lib/period";
 import { parseYmd } from "@/lib/dates";
 
-const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày không hợp lệ");
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date");
 
 const daySchema = z.object({
   date: dateSchema,
@@ -49,8 +49,8 @@ async function assertEditable(userId: string, year: number, month: number) {
   if (report && (report.status === "SUBMITTED" || report.status === "APPROVED")) {
     throw new Error(
       report.status === "APPROVED"
-        ? "Tháng này đã được chốt sổ, không thể sửa."
-        : "Tháng này đang chờ duyệt. Hãy thu hồi trước khi sửa.",
+        ? "This month is closed and cannot be edited."
+        : "This month is awaiting approval. Withdraw it before editing.",
     );
   }
 }
@@ -59,7 +59,7 @@ export async function saveDayAction(input: unknown): Promise<SaveResult> {
   const user = await requireUser();
   const parsed = saveSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dữ liệu không hợp lệ" };
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid data" };
   }
   const { day, entries } = parsed.data;
   const { year, month } = parseYmd(day.date);
@@ -126,7 +126,7 @@ export async function copyDayAction(
 ): Promise<SaveResult> {
   const user = await requireUser();
   if (!dateSchema.safeParse(fromDate).success || !dateSchema.safeParse(toDate).success) {
-    return { ok: false, error: "Ngày không hợp lệ" };
+    return { ok: false, error: "Invalid date" };
   }
   const { year, month } = parseYmd(toDate);
   try {
@@ -141,7 +141,7 @@ export async function copyDayAction(
     .where(and(eq(timeEntries.userId, user.id), eq(timeEntries.date, fromDate)));
 
   if (!srcLog && srcEntries.length === 0) {
-    return { ok: false, error: "Ngày nguồn chưa có dữ liệu để chép." };
+    return { ok: false, error: "The source day has no data to copy." };
   }
 
   await db.transaction(async (tx) => {
@@ -179,9 +179,9 @@ export async function submitMonthAction(
 ): Promise<SaveResult> {
   const user = await requireUser();
   const report = await ensureReport(user.id, year, month);
-  if (!report) return { ok: false, error: "Không tìm thấy kỳ báo cáo." };
+  if (!report) return { ok: false, error: "Report period not found." };
   if (report.status === "APPROVED") {
-    return { ok: false, error: "Tháng này đã được chốt sổ." };
+    return { ok: false, error: "This month is closed." };
   }
   await db.update(monthlyReports).set({
     status: "SUBMITTED",
@@ -203,9 +203,9 @@ export async function withdrawMonthAction(
 ): Promise<SaveResult> {
   const user = await requireUser();
   const report = await ensureReport(user.id, year, month);
-  if (!report) return { ok: false, error: "Không tìm thấy kỳ báo cáo." };
+  if (!report) return { ok: false, error: "Report period not found." };
   if (report.status === "APPROVED") {
-    return { ok: false, error: "Tháng này đã được chốt sổ, liên hệ quản trị để mở lại." };
+    return { ok: false, error: "This month is closed; contact an administrator to reopen it." };
   }
   await db.update(monthlyReports)
     .set({ status: "DRAFT", submittedAt: null, updatedAt: new Date() })
@@ -217,7 +217,7 @@ export async function withdrawMonthAction(
 /** Xoá sạch dữ liệu của một ngày. */
 export async function clearDayAction(date: string): Promise<SaveResult> {
   const user = await requireUser();
-  if (!dateSchema.safeParse(date).success) return { ok: false, error: "Ngày không hợp lệ" };
+  if (!dateSchema.safeParse(date).success) return { ok: false, error: "Invalid date" };
   const { year, month } = parseYmd(date);
   try {
     await assertEditable(user.id, year, month);

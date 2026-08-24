@@ -271,7 +271,7 @@ export default function ExportPanel({
       <div className="grid gap-3 md:grid-cols-4">
         <Metric label="Member có dữ liệu" value={String(withData.length)} />
         <Metric label="Dưới ngưỡng 140h*công số" value={String(totals.under)} tone={totals.under ? "warn" : "ok"} />
-        <Metric label="Vượt ngưỡng 180h*công số" value={String(totals.over)} tone={totals.over ? "warn" : "ok"} />
+        <Metric label={locale === "ja" ? "180h×係数超過" : "Over 180h×factor"} value={String(totals.over)} tone={totals.over ? "warn" : "ok"} />
         <Metric label={`${locale === "ja" ? "調整金額" : "Adjustment total"} (${moneyUnit})`} value={totals.amount.toLocaleString(locale === "ja" ? "ja-JP" : "en-US")} />
       </div>
 

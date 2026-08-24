@@ -22,7 +22,7 @@ export async function loginAction(
   const next = String(formData.get("next") ?? "");
 
   if (!username || !password) {
-    return { error: "Vui lòng nhập tên đăng nhập và mật khẩu." };
+    return { error: "Please enter your username and password." };
   }
 
   const [user] = await db.select().from(users)
@@ -33,10 +33,10 @@ export async function loginAction(
   const valid = await verifyPassword(password, hash);
 
   if (!user || !valid) {
-    return { error: "Tên đăng nhập hoặc mật khẩu không đúng." };
+    return { error: "Incorrect username or password." };
   }
   if (!user.isActive) {
-    return { error: "Tài khoản đã bị vô hiệu hoá. Liên hệ quản trị viên." };
+    return { error: "This account has been disabled. Contact an administrator." };
   }
 
   await createSession(user);
@@ -63,14 +63,14 @@ export async function changePasswordAction(
   const confirm = String(formData.get("confirm") ?? "");
 
   if (!(await verifyPassword(current, user.passwordHash))) {
-    return { error: "Mật khẩu hiện tại không đúng." };
+    return { error: "The current password is incorrect." };
   }
-  if (next.length < 8) return { error: "Mật khẩu mới phải có ít nhất 8 ký tự." };
+  if (next.length < 8) return { error: "The new password must be at least 8 characters." };
   if (!/[A-Za-z]/.test(next) || !/[0-9]/.test(next)) {
-    return { error: "Mật khẩu mới phải có cả chữ và số." };
+    return { error: "The new password must contain letters and numbers." };
   }
-  if (next !== confirm) return { error: "Xác nhận mật khẩu không khớp." };
-  if (next === current) return { error: "Mật khẩu mới phải khác mật khẩu hiện tại." };
+  if (next !== confirm) return { error: "Password confirmation does not match." };
+  if (next === current) return { error: "The new password must differ from the current password." };
 
   await db.update(users)
     .set({ passwordHash: await hashPassword(next), mustChangePw: false, updatedAt: new Date() })

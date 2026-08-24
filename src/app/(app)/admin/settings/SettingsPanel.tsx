@@ -137,7 +137,7 @@ export default function SettingsPanel({
           </div>
           <div className="flex-1 min-w-[200px]">
             <label className="label">祝日名</label>
-            <input className="input" placeholder="例: 海の日" value={hName}
+            <input className="input" placeholder="海の日" value={hName}
                    onChange={(e) => setHName(e.target.value)} />
           </div>
           <button className="btn-primary" disabled={busy}

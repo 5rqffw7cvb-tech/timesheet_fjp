@@ -28,9 +28,9 @@ export async function setBudgetAction(
   unitPriceMm?: number,
 ): Promise<ActionResult> {
   await requireAdmin();
-  if (!Number.isFinite(hours) || hours < 0 || hours > 9999) return fail("Số giờ không hợp lệ");
+  if (!Number.isFinite(hours) || hours < 0 || hours > 9999) return fail("Invalid hours");
   if (unitPriceMm != null && (!Number.isFinite(unitPriceMm) || unitPriceMm < 0 || unitPriceMm > 1_000_000_000)) {
-    return fail("Đơn giá không hợp lệ");
+    return fail("Invalid unit price");
   }
 
   const normalizedRate = unitPriceMm == null ? null : Math.round(unitPriceMm * 100) / 100;
@@ -89,7 +89,7 @@ export async function copyBudgetsAction(
   await requireAdmin();
   const src = await db.select().from(budgets)
     .where(and(eq(budgets.year, fromYear), eq(budgets.month, fromMonth)));
-  if (src.length === 0) return fail("Tháng nguồn chưa có budget nào.");
+  if (src.length === 0) return fail("The source month has no budgets.");
 
   for (const b of src) {
     await db.insert(budgets)
@@ -107,7 +107,7 @@ export async function copyBudgetsAction(
       });
   }
   revalidatePath("/admin/budgets");
-  return { ok: true, message: `Đã chép ${src.length} dòng budget.` };
+  return { ok: true, message: `Copied ${src.length} budget rows.` };
 }
 
 /* ─────────────────────── Duyệt / chốt sổ ─────────────────────── */
@@ -122,9 +122,9 @@ export async function reviewReportAction(
     eq(monthlyReports.year, year),
     eq(monthlyReports.month, month),
   )).limit(1);
-  if (!report) return fail("Thành viên chưa nộp tháng này.");
+  if (!report) return fail("The member has not submitted this month.");
   if (decision === "REJECTED" && !note.trim()) {
-    return fail("Vui lòng ghi lý do trả lại để member biết cần sửa gì.");
+    return fail("Please provide a reason so the member knows what to fix.");
   }
 
   await db.update(monthlyReports).set({
@@ -141,7 +141,7 @@ export async function reviewReportAction(
   });
   revalidatePath("/admin/approvals");
   revalidatePath("/admin");
-  return { ok: true, message: decision === "APPROVED" ? "Đã chốt." : "Đã trả lại cho member." };
+  return { ok: true, message: decision === "APPROVED" ? "Approved." : "Returned to the member." };
 }
 
 /** Mở lại tháng đã chốt để sửa. */
@@ -154,25 +154,25 @@ export async function reopenReportAction(
     eq(monthlyReports.year, year),
     eq(monthlyReports.month, month),
   )).limit(1);
-  if (!report) return fail("Không tìm thấy kỳ báo cáo.");
+  if (!report) return fail("Report period not found.");
 
   await db.update(monthlyReports).set({
     status: "DRAFT", submittedAt: null, reviewedAt: null,
-    reviewNote: note.trim() || "Quản lý mở lại để chỉnh sửa", updatedAt: new Date(),
+    reviewNote: note.trim() || "Management reopened this for editing", updatedAt: new Date(),
   }).where(eq(monthlyReports.id, report.id));
 
   await db.insert(auditLogs).values({
     actorId: admin.id, action: "REOPEN", target: `${userId}:${year}-${month}`,
   });
   revalidatePath("/admin/approvals");
-  return { ok: true, message: "Đã mở lại." };
+  return { ok: true, message: "Reopened." };
 }
 
 export async function bulkApproveAction(
   year: number, month: number, userIds: string[],
 ): Promise<ActionResult> {
   const admin = await requireAdmin();
-  if (userIds.length === 0) return fail("Chưa chọn thành viên nào.");
+  if (userIds.length === 0) return fail("No members selected.");
   let n = 0;
   for (const userId of userIds) {
     const res = await reviewReportAction(userId, year, month, "APPROVED", "");
@@ -181,7 +181,7 @@ export async function bulkApproveAction(
   await db.insert(auditLogs).values({
     actorId: admin.id, action: "BULK_APPROVE", target: `${year}-${month}`, detail: String(n),
   });
-  return { ok: true, message: `Đã chốt ${n} thành viên.` };
+  return { ok: true, message: `Approved ${n} members.` };
 }
 
 /* ─────────────────────────── Thành viên ─────────────────────────── */
@@ -203,11 +203,11 @@ export async function createMemberAction(input: unknown, password: string): Prom
   await requireAdmin();
   const parsed = memberSchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0].message);
-  if (password.length < 8) return fail("Mật khẩu khởi tạo phải có ít nhất 8 ký tự.");
+  if (password.length < 8) return fail("Initial password must be at least 8 characters.");
 
   const [dup] = await db.select({ id: users.id }).from(users)
     .where(eq(users.username, parsed.data.username)).limit(1);
-  if (dup) return fail("Tên đăng nhập đã tồn tại.");
+  if (dup) return fail("Username already exists.");
 
   const [created] = await db.insert(users).values({
     ...parsed.data,
@@ -222,7 +222,7 @@ export async function createMemberAction(input: unknown, password: string): Prom
     mustChangePw: true,
   }).returning({ id: users.id });
   revalidatePath("/admin/members");
-  return { ok: true, id: created?.id, message: "Đã tạo tài khoản." };
+  return { ok: true, id: created?.id, message: "Account created." };
 }
 
 export async function updateMemberAction(id: string, input: unknown): Promise<ActionResult> {
@@ -232,7 +232,7 @@ export async function updateMemberAction(id: string, input: unknown): Promise<Ac
 
   const [dup] = await db.select({ id: users.id }).from(users)
     .where(and(eq(users.username, parsed.data.username), sql`${users.id} <> ${id}`)).limit(1);
-  if (dup) return fail("Tên đăng nhập đã được dùng bởi tài khoản khác.");
+  if (dup) return fail("This username is already used by another account.");
 
   await db.update(users).set({
     ...parsed.data,
@@ -246,12 +246,12 @@ export async function updateMemberAction(id: string, input: unknown): Promise<Ac
     updatedAt: new Date(),
   }).where(eq(users.id, id));
   revalidatePath("/admin/members");
-  return { ok: true, message: "Đã lưu." };
+  return { ok: true, message: "Saved." };
 }
 
 export async function toggleMemberAction(id: string, isActive: boolean): Promise<ActionResult> {
   const admin = await requireAdmin();
-  if (admin.id === id && !isActive) return fail("Không thể tự vô hiệu hoá tài khoản của mình.");
+  if (admin.id === id && !isActive) return fail("You cannot disable your own account.");
   await db.update(users).set({ isActive, updatedAt: new Date() }).where(eq(users.id, id));
   revalidatePath("/admin/members");
   return { ok: true };
@@ -259,13 +259,13 @@ export async function toggleMemberAction(id: string, isActive: boolean): Promise
 
 export async function resetPasswordAction(id: string, password: string): Promise<ActionResult> {
   const admin = await requireAdmin();
-  if (password.length < 8) return fail("Mật khẩu phải có ít nhất 8 ký tự.");
+  if (password.length < 8) return fail("Password must be at least 8 characters.");
   await db.update(users).set({
     passwordHash: await hashPassword(password), mustChangePw: true, updatedAt: new Date(),
   }).where(eq(users.id, id));
   await db.insert(auditLogs).values({ actorId: admin.id, action: "RESET_PASSWORD", target: id });
   revalidatePath("/admin/members");
-  return { ok: true, message: "Đã đặt lại mật khẩu. Member phải đổi ở lần đăng nhập kế tiếp." };
+  return { ok: true, message: "Password reset. The member must change it at next sign-in." };
 }
 
 export async function syncMemberProjectAssignmentsAction(
@@ -293,7 +293,7 @@ export async function syncMemberProjectAssignmentsAction(
 
   revalidatePath("/admin/members");
   revalidatePath("/timesheet");
-  return { ok: true, message: "Đã đồng bộ project của member." };
+  return { ok: true, message: "Member projects synchronized." };
 }
 
 /* ─────────────────────────── Master ─────────────────────────── */
@@ -303,18 +303,18 @@ export async function upsertProjectAction(
   data: { systemCode: string; systemName: string; code: string; name: string; isActive: boolean },
 ): Promise<ActionResult> {
   await requireAdmin();
-  if (!data.code.trim() || !data.name.trim()) return fail("Thiếu mã hoặc tên project.");
+  if (!data.code.trim() || !data.name.trim()) return fail("Project code or name is missing.");
 
   if (id) {
     await db.update(projects).set({ ...data }).where(eq(projects.id, id));
   } else {
     const [dup] = await db.select({ id: projects.id }).from(projects)
       .where(eq(projects.code, data.code)).limit(1);
-    if (dup) return fail("Mã project đã tồn tại.");
+    if (dup) return fail("Project code already exists.");
     await db.insert(projects).values(data);
   }
   revalidatePath("/admin/masters");
-  return { ok: true, message: "Đã lưu project." };
+  return { ok: true, message: "Project saved." };
 }
 
 export async function upsertWorkTypeAction(
@@ -322,18 +322,18 @@ export async function upsertWorkTypeAction(
   data: { code: string; name: string; category: string; note: string; isActive: boolean },
 ): Promise<ActionResult> {
   await requireAdmin();
-  if (!data.code.trim() || !data.name.trim()) return fail("Thiếu mã hoặc tên 工種.");
+  if (!data.code.trim() || !data.name.trim()) return fail("Work type code or name is missing.");
   const payload = { ...data, note: data.note || null };
   if (id) {
     await db.update(workTypes).set(payload).where(eq(workTypes.id, id));
   } else {
     const [dup] = await db.select({ id: workTypes.id }).from(workTypes)
       .where(eq(workTypes.code, data.code)).limit(1);
-    if (dup) return fail("Mã 工種 đã tồn tại.");
+    if (dup) return fail("Work type code already exists.");
     await db.insert(workTypes).values(payload);
   }
   revalidatePath("/admin/masters");
-  return { ok: true, message: "Đã lưu 工種." };
+  return { ok: true, message: "Work type saved." };
 }
 
 /* ─────────────────────────── Cấu hình ─────────────────────────── */
@@ -342,19 +342,19 @@ export async function setMonthSettingAction(
   year: number, month: number, workingDays: number,
 ): Promise<ActionResult> {
   await requireAdmin();
-  if (workingDays < 0 || workingDays > 31) return fail("所定日数 phải trong khoảng 0–31.");
+  if (workingDays < 0 || workingDays > 31) return fail("Working days must be between 0 and 31.");
   await db.insert(monthSettings).values({ year, month, workingDays })
     .onConflictDoUpdate({
       target: [monthSettings.year, monthSettings.month], set: { workingDays },
     });
   revalidatePath("/admin/settings");
   revalidatePath("/admin");
-  return { ok: true, message: "Đã lưu 所定日数." };
+  return { ok: true, message: "Working days saved." };
 }
 
 export async function addHolidayAction(date: string, name: string): Promise<ActionResult> {
   await requireAdmin();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Ngày không hợp lệ.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return fail("Invalid date.");
   await db.insert(holidays).values({ date, name: name.trim() || "公休" })
     .onConflictDoUpdate({ target: holidays.date, set: { name: name.trim() || "公休" } });
   revalidatePath("/admin/settings");
@@ -383,14 +383,14 @@ export async function updateOrgSettingAction(data: {
   await db.insert(orgSettings).values({ id: "default", ...payload })
     .onConflictDoUpdate({ target: orgSettings.id, set: { ...payload, updatedAt: new Date() } });
   revalidatePath("/admin/settings");
-  return { ok: true, message: "Đã lưu." };
+  return { ok: true, message: "Saved." };
 }
 
 export async function upsertCompanyAction(
   id: string | null, code: string, name: string,
 ): Promise<ActionResult> {
   await requireAdmin();
-  if (!code.trim() || !name.trim()) return fail("Thiếu mã hoặc tên công ty.");
+  if (!code.trim() || !name.trim()) return fail("Company code or name is missing.");
   if (id) await db.update(companies).set({ code, name }).where(eq(companies.id, id));
   else await db.insert(companies).values({ code, name }).onConflictDoNothing();
   revalidatePath("/admin/settings");

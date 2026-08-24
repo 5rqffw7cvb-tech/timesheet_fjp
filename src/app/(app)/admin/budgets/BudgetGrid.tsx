@@ -119,7 +119,7 @@ export default function BudgetGrid({
             ))}
           </select>
           <button className="btn-secondary btn-sm" onClick={copyPrev} disabled={busy}>
-            Chép từ tháng trước
+            {locale === "ja" ? "前月からコピー" : "Copy previous month"}
           </button>
           <button className="btn-primary" onClick={saveAll} disabled={busy || dirty.size === 0}>
             {busy ? t("saving") : `${t("save")}${dirty.size ? ` (${dirty.size})` : ""}`}

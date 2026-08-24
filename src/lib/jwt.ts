@@ -10,7 +10,7 @@ export interface SessionPayload {
 function secret() {
   const s = process.env.AUTH_SECRET;
   if (!s || s.length < 32) {
-    throw new Error("AUTH_SECRET phải có ít nhất 32 ký tự — xem file .env.example");
+    throw new Error("AUTH_SECRET must be at least 32 characters; see .env.example");
   }
   return new TextEncoder().encode(s);
 }

@@ -21,15 +21,15 @@ export async function GET(req: Request) {
   const scope = url.searchParams.get("scope") ?? "approved";
 
   if (!year || !month || month < 1 || month > 12) {
-    return NextResponse.json({ error: "Thiếu hoặc sai tham số year/month" }, { status: 400 });
+    return NextResponse.json({ error: "Missing or invalid year/month parameters" }, { status: 400 });
   }
 
   const me = await currentUser();
-  if (!me) return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
+  if (!me) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
   // member chỉ được tải file của chính mình
   if (me.role !== "ADMIN" && userId !== me.id) {
-    return NextResponse.json({ error: "Không có quyền" }, { status: 403 });
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {
@@ -51,7 +51,7 @@ export async function GET(req: Request) {
     );
     if (targets.length === 0) {
       return NextResponse.json(
-        { error: scope === "all" ? "Không có thành viên nào có dữ liệu." : "Chưa có thành viên nào được chốt sổ." },
+        { error: scope === "all" ? "No members have data." : "No members have been approved." },
         { status: 404 },
       );
     }

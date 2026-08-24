@@ -61,7 +61,7 @@ export async function buildMemberReport(
     ]);
 
   const row = userRows[0];
-  if (!row) throw new Error("Không tìm thấy thành viên.");
+  if (!row) throw new Error("Member not found.");
   const user = row.u;
 
   /* ── ngày ── */

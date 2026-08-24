@@ -13,7 +13,7 @@ const MESSAGES = {
     loginPassword: "パスワード",
     loginButton: "ログイン",
     loginLoading: "ログイン中…",
-    loginPlaceholder: "例: thienln",
+    loginPlaceholder: "入力: thienln",
     changePasswordTitle: "パスワード変更",
     currentPassword: "現在のパスワード",
     newPassword: "新しいパスワード",
