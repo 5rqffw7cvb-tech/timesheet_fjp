@@ -55,6 +55,10 @@ export const projectAssignments = pgTable(
     id: text("id").primaryKey().$defaultFn(createId),
     userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     projectId: text("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
+    /** null = không giới hạn (đã assign từ trước / vô thời hạn) */
+    startDate: date("start_date"),
+    /** null = vẫn đang assign (chưa kết thúc) */
+    endDate: date("end_date"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

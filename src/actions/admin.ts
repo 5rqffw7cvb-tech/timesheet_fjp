@@ -59,8 +59,10 @@ export async function setBudgetAction(
           updatedAt: new Date(),
         },
       });
+    // Assign mới bắt đầu tính từ tháng gán budget đầu tiên; nếu đã có assign
+    // từ trước thì giữ nguyên khoảng thời gian admin đã đặt riêng.
     await db.insert(projectAssignments)
-      .values({ userId, projectId })
+      .values({ userId, projectId, startDate: effectiveFrom })
       .onConflictDoNothing({ target: [projectAssignments.userId, projectAssignments.projectId] });
 
     if (normalizedRate != null && normalizedRate > 0) {
@@ -294,6 +296,36 @@ export async function syncMemberProjectAssignmentsAction(
   revalidatePath("/admin/members");
   revalidatePath("/timesheet");
   return { ok: true, message: "Member projects synchronized." };
+}
+
+const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Đặt khoảng thời gian member được assign vào project (hiện trong danh sách
+ * chọn project khi chấm công). null = không giới hạn (start) / vẫn đang
+ * assign (end). Tạo mới assign nếu chưa có (không bắt buộc phải có budget).
+ */
+export async function setAssignmentPeriodAction(
+  userId: string, projectId: string,
+  startDate: string | null, endDate: string | null,
+): Promise<ActionResult> {
+  await requireAdmin();
+  if (startDate != null && !dateRe.test(startDate)) return fail("Invalid start date");
+  if (endDate != null && !dateRe.test(endDate)) return fail("Invalid end date");
+  if (startDate != null && endDate != null && startDate > endDate) {
+    return fail("Start date must be before end date");
+  }
+
+  await db.insert(projectAssignments)
+    .values({ userId, projectId, startDate, endDate })
+    .onConflictDoUpdate({
+      target: [projectAssignments.userId, projectAssignments.projectId],
+      set: { startDate, endDate },
+    });
+
+  revalidatePath("/admin/budgets");
+  revalidatePath("/timesheet");
+  return { ok: true };
 }
 
 /* ─────────────────────────── Master ─────────────────────────── */

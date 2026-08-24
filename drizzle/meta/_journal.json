@@ -43,6 +43,13 @@
       "when": 1788228000000,
       "tag": "0005_project_workplace_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788231600000,
+      "tag": "0006_project_assignment_period",
+      "breakpoints": true
     }
   ]
 }

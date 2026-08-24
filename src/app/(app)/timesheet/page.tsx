@@ -1,5 +1,5 @@
 import { requireUser } from "@/lib/auth";
-import { loadMasters, loadMonth } from "@/lib/period";
+import { loadMasters, loadMonth, monthRange } from "@/lib/period";
 import { todayParts } from "@/lib/dates";
 import TimesheetEditor from "./TimesheetEditor";
 
@@ -18,7 +18,7 @@ export default async function TimesheetPage({
 
   const [data, masters] = await Promise.all([
     loadMonth(user.id, year, month),
-    loadMasters(user.id),
+    loadMasters(user.id, monthRange(year, month)),
   ]);
 
   return (

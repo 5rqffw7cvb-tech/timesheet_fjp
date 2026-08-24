@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lte, inArray } from "drizzle-orm";
+import { and, asc, eq, gte, lte, inArray, or, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
   budgets, dayLogs, monthlyReports, projects, timeEntries, workTypes,
@@ -224,7 +224,13 @@ export function defaultWorkingDays(year: number, month: number): number {
   return n;
 }
 
-export async function loadMasters(userId?: string) {
+/**
+ * @param period Khi truyền vào, chỉ lấy project mà assign của userId đang
+ * còn hiệu lực trong tháng đó (startDate/endDate null = không giới hạn phía
+ * đó). Dùng để member không còn thấy project đã hết hạn assign trong danh
+ * sách chọn ở màn hình chấm công.
+ */
+export async function loadMasters(userId?: string, period?: MonthRange) {
   const projectQuery = userId
     ? db.select({
         id: projects.id,
@@ -244,7 +250,14 @@ export async function loadMasters(userId?: string) {
       })
         .from(projectAssignments)
         .innerJoin(projects, eq(projects.id, projectAssignments.projectId))
-        .where(and(eq(projectAssignments.userId, userId), eq(projects.isActive, true)))
+        .where(and(
+          eq(projectAssignments.userId, userId),
+          eq(projects.isActive, true),
+          ...(period ? [
+            or(isNull(projectAssignments.startDate), lte(projectAssignments.startDate, period.last)),
+            or(isNull(projectAssignments.endDate), gte(projectAssignments.endDate, period.first)),
+          ] : []),
+        ))
         .orderBy(asc(projects.sortOrder), asc(projects.code))
     : db.select().from(projects).where(eq(projects.isActive, true))
         .orderBy(asc(projects.sortOrder), asc(projects.code));

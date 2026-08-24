@@ -2,7 +2,7 @@
 
 import { Fragment, useState, useTransition } from "react";
 import MonthNav from "@/components/MonthNav";
-import { setBudgetAction, copyBudgetsAction } from "@/actions/admin";
+import { setBudgetAction, copyBudgetsAction, setAssignmentPeriodAction } from "@/actions/admin";
 import { shiftMonth } from "@/lib/dates";
 import { currencySymbol, type BillingCurrency } from "@/lib/currency";
 import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableUi";
@@ -17,6 +17,11 @@ interface Member {
   used: Record<string, number>;
 }
 
+interface Period {
+  startDate: string | null;
+  endDate: string | null;
+}
+
 /**
  * Mỗi member gộp thành 1 dòng (không còn 1 cột/project) — click dòng để mở
  * rộng danh sách project riêng của member đó. Tránh cuộn ngang bất tận khi
@@ -24,19 +29,22 @@ interface Member {
  * input cột, không quản lý nổi).
  */
 export default function BudgetGrid({
-  year, month, members, projects, initial, initialRates, billingCurrency,
+  year, month, members, projects, initial, initialRates, initialPeriods, billingCurrency,
 }: {
   year: number; month: number;
   members: Member[];
   projects: { id: string; code: string; name: string }[];
   initial: Record<string, number>;
   initialRates: Record<string, number>;
+  initialPeriods: Record<string, Period>;
   billingCurrency: BillingCurrency;
 }) {
   const moneyUnit = currencySymbol(billingCurrency);
   const { t, locale } = useLocale();
   const [values, setValues] = useState<Record<string, number>>(initial);
   const [rates, setRates] = useState<Record<string, number>>(initialRates);
+  const [periods, setPeriods] = useState<Record<string, Period>>(initialPeriods);
+  const [savingPeriod, setSavingPeriod] = useState<Set<string>>(new Set());
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
@@ -99,6 +107,19 @@ export default function BudgetGrid({
     setExpanded((s) => new Set(s).add(userId));
   }
 
+  /** Sửa xong là lưu ngay (không gộp vào nút Save chung của 工数/単価). */
+  function savePeriod(userId: string, projectId: string, field: "startDate" | "endDate", value: string) {
+    const key = `${userId}|${projectId}`;
+    const next: Period = { ...(periods[key] ?? { startDate: null, endDate: null }), [field]: value || null };
+    setPeriods((s) => ({ ...s, [key]: next }));
+    setSavingPeriod((s) => new Set(s).add(key));
+    startTransition(async () => {
+      const res = await setAssignmentPeriodAction(userId, projectId, next.startDate, next.endDate);
+      setSavingPeriod((s) => { const n = new Set(s); n.delete(key); return n; });
+      if (!res.ok) setMsg(res.error ?? (locale === "ja" ? "エラー" : "Error"));
+    });
+  }
+
   function saveAll() {
     startTransition(async () => {
       let n = 0;
@@ -132,7 +153,9 @@ export default function BudgetGrid({
         <div className="ml-auto flex items-center gap-2">
           <input className="input w-64" placeholder={t("budgetSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
           <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
-            {locale === "ja" ? "0より大きい値を入れるとこのPJがメンバーに割り当てられます" : "If the value is > 0, the project is assigned to the member."}
+            {locale === "ja"
+              ? "0より大きい値を入れるとこのPJがメンバーに割り当てられます。行を開くとアサイン期間も設定できます。"
+              : "If the value is > 0, the project is assigned to the member. Expand a row to also set the assign period."}
           </span>
           {msg && <span className="text-xs text-slate-500">{msg}</span>}
           <button className="btn-secondary btn-sm" onClick={copyPrev} disabled={busy}>
@@ -187,6 +210,7 @@ export default function BudgetGrid({
                           <thead>
                             <tr className="text-xs text-slate-400">
                               <th className="py-1 pl-3 text-left">{locale === "ja" ? "プロジェクト" : "Project"}</th>
+                              <th className="text-center">{locale === "ja" ? "アサイン期間" : "Assigned period"}</th>
                               <th className="text-right">{locale === "ja" ? "工数" : "hours"}</th>
                               <th className="text-right">{locale === "ja" ? "単価" : "unit price"}</th>
                               <th className="py-1 pr-3 text-right">{locale === "ja" ? "使用済み" : "used"}</th>
@@ -201,11 +225,33 @@ export default function BudgetGrid({
                               const budget = values[key] ?? 0;
                               const rate = rates[key] ?? 0;
                               const over = budget > 0 && usedCong > budget;
+                              const period = periods[key] ?? { startDate: null, endDate: null };
+                              const savingThis = savingPeriod.has(key);
                               return (
                                 <tr key={pid} onClick={(e) => e.stopPropagation()}>
                                   <td className="py-1.5 pl-3">
                                     <div className="text-slate-700">{p?.name ?? pid}</div>
                                     <div className="text-xs text-slate-400">{p?.code}</div>
+                                  </td>
+                                  <td>
+                                    <div className="flex items-center justify-center gap-1">
+                                      <input
+                                        type="date"
+                                        className="input w-[132px] text-xs"
+                                        value={period.startDate ?? ""}
+                                        title={locale === "ja" ? "開始日（空欄=無制限）" : "Start date (blank = no limit)"}
+                                        onChange={(e) => savePeriod(m.userId, pid, "startDate", e.target.value)}
+                                      />
+                                      <span className="text-slate-300">–</span>
+                                      <input
+                                        type="date"
+                                        className="input w-[132px] text-xs"
+                                        value={period.endDate ?? ""}
+                                        title={locale === "ja" ? "終了日（空欄=継続中）" : "End date (blank = ongoing)"}
+                                        onChange={(e) => savePeriod(m.userId, pid, "endDate", e.target.value)}
+                                      />
+                                      {savingThis && <span className="text-[10px] text-slate-400">{locale === "ja" ? "保存中…" : "saving…"}</span>}
+                                    </div>
                                   </td>
                                   <td className="text-right">
                                     <input
@@ -236,7 +282,7 @@ export default function BudgetGrid({
                               );
                             })}
                             <tr onClick={(e) => e.stopPropagation()}>
-                              <td colSpan={4} className="py-2 pl-3">
+                              <td colSpan={5} className="py-2 pl-3">
                                 <select className="select w-64" value="" onChange={(e) => { addProjectToMember(m.userId, e.target.value); e.target.value = ""; }}>
                                   <option value="">+ {locale === "ja" ? "プロジェクトを追加" : "Add project"}</option>
                                   {projects.filter((p) => !pids.includes(p.id)).map((p) => (
