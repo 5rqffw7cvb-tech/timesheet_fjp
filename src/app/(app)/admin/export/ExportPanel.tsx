@@ -290,9 +290,9 @@ export default function ExportPanel({
           <thead>
             <tr>
               <th><button onClick={() => setBillingSort(toggleSort(billingSort, "fullName"))}>{t("membersTitle")}</button></th>
-              <th><button className="text-right" onClick={() => setBillingSort(toggleSort(billingSort, "usedHours"))}>{t("timesheetHours")}</button></th><th className="text-right">{t("membersFactor")}</th>
+              <th className="text-right"><button className="text-right" onClick={() => setBillingSort(toggleSort(billingSort, "usedHours"))}>{t("timesheetHours")}</button></th><th className="text-right">{t("membersFactor")}</th>
               <th className="text-right">Lower</th><th className="text-right">Upper</th><th className="text-right">{locale === "ja" ? "不足" : "Short"}</th>
-              <th className="text-right">{locale === "ja" ? "超過" : "Over"}</th><th className="text-right">{locale === "ja" ? "平均単価" : "Avg price"} ({moneyUnit})</th><th><button className="text-right" onClick={() => setBillingSort(toggleSort(billingSort, "amount"))}>{locale === "ja" ? "調整額" : "Adjustment"} ({moneyUnit})</button></th>
+              <th className="text-right">{locale === "ja" ? "超過" : "Over"}</th><th className="text-right">{locale === "ja" ? "平均単価" : "Avg price"} ({moneyUnit})</th><th className="text-right"><button className="text-right" onClick={() => setBillingSort(toggleSort(billingSort, "amount"))}>{locale === "ja" ? "調整額" : "Adjustment"} ({moneyUnit})</button></th>
             </tr>
           </thead>
           <tbody>
@@ -330,7 +330,7 @@ export default function ExportPanel({
           <thead>
             <tr>
               <th><button onClick={() => setFileSort(toggleSort(fileSort, "fullName"))}>{t("membersTitle")}</button></th><th>{locale === "ja" ? "ファイル名" : "File name"}</th>
-              <th><button className="text-right" onClick={() => setFileSort(toggleSort(fileSort, "usedHours"))}>{t("timesheetHours")}</button></th><th><button className="text-right" onClick={() => setFileSort(toggleSort(fileSort, "attendanceHours"))}>{t("timesheetAttendance")}</button></th>
+              <th className="text-right"><button className="text-right" onClick={() => setFileSort(toggleSort(fileSort, "usedHours"))}>{t("timesheetHours")}</button></th><th className="text-right"><button className="text-right" onClick={() => setFileSort(toggleSort(fileSort, "attendanceHours"))}>{t("timesheetAttendance")}</button></th>
               <th><button onClick={() => setFileSort(toggleSort(fileSort, "status"))}>{t("membersStatus")}</button></th><th></th>
             </tr>
           </thead>

@@ -118,7 +118,7 @@ export default function ApprovalPanel({
                 <tr>
                   <th></th>
                   <th><button onClick={() => setSort(toggleSort(sort, "fullName"))}>{t("membersTitle")}</button></th>
-                  <th><button onClick={() => setSort(toggleSort(sort, "usedHours"))} className="text-right">{t("timesheetHours")}</button></th>
+                  <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "usedHours"))} className="text-right">{t("timesheetHours")}</button></th>
                   <th><button onClick={() => setSort(toggleSort(sort, "status"))}>{t("membersStatus")}</button></th>
                 </tr>
               </thead>
@@ -268,9 +268,9 @@ function DayTable({ detail }: { detail: MonthData }) {
             <tr>
               <th><button onClick={() => setSort(toggleSort(sort, "day"))}>{locale === "ja" ? "日付" : "Day"}</button></th>
               <th>{t("timesheetStart")}</th><th>{t("timesheetEnd")}</th><th className="text-right">{t("timesheetBreak")}</th>
-              <th><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">{t("timesheetAttendance")}</button></th>
+              <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">{t("timesheetAttendance")}</button></th>
               <th>{t("timesheetWorkDetails")}</th>
-              <th><button onClick={() => setSort(toggleSort(sort, "entryHours"))} className="text-right">{t("timesheetHours")}</button></th><th>{t("timesheetTypeLabel")}</th>
+              <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "entryHours"))} className="text-right">{t("timesheetHours")}</button></th><th>{t("timesheetTypeLabel")}</th>
             </tr>
           </thead>
           <tbody>

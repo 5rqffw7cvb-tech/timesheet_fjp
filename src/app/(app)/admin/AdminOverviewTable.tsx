@@ -45,11 +45,11 @@ export default function AdminOverviewTable({ rows, year, month }: { rows: Overvi
             <tr>
               <th><button onClick={() => setSort(toggleSort(sort, "fullName"))}>{t("membersName")}</button></th>
               <th><button onClick={() => setSort(toggleSort(sort, "roleTitle"))}>{t("membersRole")}</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "daysLogged"))} className="text-right">{locale === "ja" ? "稼働日数" : "Days"}</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">{t("timesheetAttendance")}</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "usedHours"))} className="text-right">{t("timesheetHours")}</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "diff"))} className="text-right">{t("timesheetDiff")}</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "budgetHours"))} className="text-right">{t("budgetTitle")}</button></th>
+              <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "daysLogged"))} className="text-right">{locale === "ja" ? "稼働日数" : "Days"}</button></th>
+              <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">{t("timesheetAttendance")}</button></th>
+              <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "usedHours"))} className="text-right">{t("timesheetHours")}</button></th>
+              <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "diff"))} className="text-right">{t("timesheetDiff")}</button></th>
+              <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "budgetHours"))} className="text-right">{t("budgetTitle")}</button></th>
               <th className="w-[190px]">{locale === "ja" ? "進捗" : "Progress"}</th>
               <th><button onClick={() => setSort(toggleSort(sort, "status"))}>{t("membersStatus")}</button></th>
               <th></th>

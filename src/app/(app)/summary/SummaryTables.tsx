@@ -55,7 +55,7 @@ function WeekTable({ data }: { data: MonthData }) {
         <input className="input ml-auto w-56" placeholder={locale === "ja" ? "週 / 時間を検索…" : "Search week / hours…"} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       <table className="data">
-        <thead><tr><th><button onClick={() => setSort(toggleSort(sort, "week"))}>{locale === "ja" ? "週" : "Week"}</button></th><th><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">{t("timesheetHours")}</button></th><th>{locale === "ja" ? "割合" : "Share"}</th></tr></thead>
+        <thead><tr><th><button onClick={() => setSort(toggleSort(sort, "week"))}>{locale === "ja" ? "週" : "Week"}</button></th><th className="text-right"><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">{t("timesheetHours")}</button></th><th>{locale === "ja" ? "割合" : "Share"}</th></tr></thead>
         <tbody>
           {sorted.map(({ week, hours }) => (
             <tr key={week}>
@@ -103,7 +103,7 @@ function TypeTable({ data, byType }: { data: MonthData; byType: Array<{ code: st
             <th><button onClick={() => setSort(toggleSort(sort, "code"))}>CD</button></th>
             <th><button onClick={() => setSort(toggleSort(sort, "name"))}>工種</button></th>
             <th><button onClick={() => setSort(toggleSort(sort, "projectName"))}>プロジェクト</button></th>
-            <th><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">{t("timesheetHours")}</button></th>
+            <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">{t("timesheetHours")}</button></th>
             <th className="text-right">%</th>
           </tr>
         </thead>
@@ -157,8 +157,8 @@ function AttendanceTable({ data, year, month }: { data: MonthData; year: number;
             <tr>
               <th><button onClick={() => setSort(toggleSort(sort, "day"))}>{locale === "ja" ? "日付" : "Day"}</button></th>
               <th>{t("timesheetStart")}</th><th>{t("timesheetEnd")}</th><th className="text-right">{t("timesheetBreak")}</th>
-              <th><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">就業時間</button></th>
-              <th><button onClick={() => setSort(toggleSort(sort, "entryHours"))} className="text-right">{t("timesheetHours")}</button></th>
+              <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "attendanceHours"))} className="text-right">就業時間</button></th>
+              <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "entryHours"))} className="text-right">{t("timesheetHours")}</button></th>
               <th>{t("timesheetTypeLabel")}</th>
             </tr>
           </thead>
