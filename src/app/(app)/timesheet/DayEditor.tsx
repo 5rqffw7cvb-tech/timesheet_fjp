@@ -3,11 +3,25 @@
 import { useMemo, useState } from "react";
 import type { Project, WorkType } from "@/db/schema";
 import { minToHHMM, hhmmToMin, WEEKDAY_JA, WEEKDAY_VI, workedHours } from "@/lib/dates";
-import type { DayData, EntryData } from "@/lib/period";
+import type { DayData } from "@/lib/period";
 import { containsText, sortRows, toggleSort, type SortState } from "@/lib/tableUi";
 import { useLocale } from "@/components/LocaleProvider";
 
-export interface DraftEntry extends Omit<EntryData, "id"> { key: string }
+/**
+ * Một dòng công việc mang cả 2 giá trị 実績(actualHours) và 予定(planHours)
+ * cho cùng project × 工種 × nội dung — vì template Excel週報 cần cả 2 cột
+ * (dòng 予定 và dòng 実績) cho mỗi tổ hợp project × 工種, không phải chọn 1
+ * trong 2. Khi lưu, mỗi giá trị > 0 sẽ tách thành 1 bản ghi time_entries
+ * (isPlan tương ứng) — xem TimesheetEditor.tsx.
+ */
+export interface DraftEntry {
+  key: string;
+  projectId: string;
+  workTypeId: string;
+  description: string;
+  actualHours: number;
+  planHours: number;
+}
 
 export interface DayDraft {
   startMin: number | null;
@@ -56,9 +70,9 @@ export default function DayEditor({
   }, [workTypes]);
 
   const attendance = workedHours(draft.startMin, draft.endMin, draft.breakMin);
-  const entryTotal = draft.entries.reduce((s, e) => s + (e.isPlan ? 0 : e.hours), 0);
+  const entryTotal = draft.entries.reduce((s, e) => s + e.actualHours, 0);
   const diff = Math.round((entryTotal - attendance) * 100) / 100;
-  const hasActualEntries = draft.entries.some((e) => !e.isPlan);
+  const hasActualEntries = draft.entries.some((e) => e.actualHours > 0);
   const noEntriesWarning = attendance > 0 && !hasActualEntries;
   const mismatchWarning = attendance > 0 && hasActualEntries && diff !== 0;
   const hasWarning = noEntriesWarning || mismatchWarning;
@@ -80,8 +94,8 @@ export default function DayEditor({
         projectId: defaultProjectId,
         workTypeId: defaultWorkTypeId,
         description: "",
-        hours: 0,
-        isPlan: false,
+        actualHours: 0,
+        planHours: 0,
       }],
     });
   }
@@ -92,14 +106,14 @@ export default function DayEditor({
   const filteredEntries = useMemo(() => {
     const needle = q.trim();
     const base = needle
-      ? draft.entries.filter((e) => [e.description, e.projectId, e.workTypeId, e.isPlan ? "予定" : "", String(e.hours)]
+      ? draft.entries.filter((e) => [e.description, e.projectId, e.workTypeId, String(e.actualHours), String(e.planHours)]
         .some((v) => containsText(v, needle)))
       : draft.entries;
     return sortRows(base, sort, (e) => {
       if (sort.key === "project") return projects.find((p) => p.id === e.projectId)?.name ?? e.projectId;
       if (sort.key === "workType") return workTypes.find((w) => w.id === e.workTypeId)?.name ?? e.workTypeId;
-      if (sort.key === "hours") return e.hours;
-      if (sort.key === "isPlan") return e.isPlan ? 1 : 0;
+      if (sort.key === "actualHours") return e.actualHours;
+      if (sort.key === "planHours") return e.planHours;
       return e.description;
     });
   }, [draft.entries, q, sort, projects, workTypes]);
@@ -246,14 +260,22 @@ export default function DayEditor({
             <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2">
               <input className="input w-64" placeholder={t("lineSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
+            <div className="flex items-start gap-1.5 border-b border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] leading-snug text-slate-500">
+              <InfoIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+              <span>
+                {locale === "ja"
+                  ? <>週報エクセルには <b className="font-medium text-slate-600">実績</b>（当日やった時間）と <b className="font-medium text-slate-600">予定</b>（見込みの時間）の両方が必要です。1行につき両方の欄を入力してください（どちらか一方だけでも構いません）。</>
+                  : <>The weekly report needs both <b className="font-medium text-slate-600">Actual</b> (hours really worked) and <b className="font-medium text-slate-600">Planned</b> (forecast hours) per line. Fill in both columns for each row (either one alone is fine too).</>}
+              </span>
+            </div>
             <table className="data">
               <thead>
                 <tr>
-                  <th className="w-[190px]"><button onClick={() => setSort(toggleSort(sort, "project"))}>{t("timesheetProject")}</button></th>
-                  <th className="w-[260px]"><button onClick={() => setSort(toggleSort(sort, "workType"))}>{t("timesheetWorkType")}</button></th>
+                  <th className="w-[170px]"><button onClick={() => setSort(toggleSort(sort, "project"))}>{t("timesheetProject")}</button></th>
+                  <th className="w-[230px]"><button onClick={() => setSort(toggleSort(sort, "workType"))}>{t("timesheetWorkType")}</button></th>
                   <th>{t("timesheetDescription")}</th>
-                  <th className="w-[84px] text-right"><button onClick={() => setSort(toggleSort(sort, "hours"))} className="text-right">{t("timesheetHours")}</button></th>
-                  <th className="w-[74px]"><button onClick={() => setSort(toggleSort(sort, "isPlan"))}>{t("timesheetPlanned")}</button></th>
+                  <th className="w-[86px] text-right"><button onClick={() => setSort(toggleSort(sort, "actualHours"))} className="text-right">{locale === "ja" ? "実績(h)" : "Actual (h)"}</button></th>
+                  <th className="w-[86px] text-right"><button onClick={() => setSort(toggleSort(sort, "planHours"))} className="text-right">{locale === "ja" ? "予定(h)" : "Planned (h)"}</button></th>
                   <th className="w-[44px]"></th>
                 </tr>
               </thead>
@@ -291,16 +313,24 @@ export default function DayEditor({
                              onChange={(ev) => updateEntry(e.key, { description: ev.target.value })} />
                     </td>
                     <td>
-                      <input type="number" min={0} max={24} step={0.25}
-                             className="input num text-right" disabled={readOnly}
-                             value={e.hours === 0 ? "" : e.hours} placeholder="0"
-                             onChange={(ev) => updateEntry(e.key, { hours: Number(ev.target.value) || 0 })} />
+                      <div className="relative">
+                        <input type="number" min={0} max={24} step={0.25}
+                               className="input num pr-5 text-right" disabled={readOnly}
+                               value={e.actualHours === 0 ? "" : e.actualHours} placeholder="0"
+                               title={locale === "ja" ? "実績：実際に作業した時間" : "Actual: hours really worked"}
+                               onChange={(ev) => updateEntry(e.key, { actualHours: Number(ev.target.value) || 0 })} />
+                        <span className="pointer-events-none absolute inset-y-0 right-1.5 flex items-center text-xs text-slate-400">h</span>
+                      </div>
                     </td>
-                    <td className="text-center">
-                      <input type="checkbox" className="h-4 w-4 accent-brand-600"
-                             disabled={readOnly} checked={e.isPlan}
-                             title={locale === "ja" ? "予定としてマーク（実績合計には含めません）" : "Mark as planned; exclude from actual total"}
-                             onChange={(ev) => updateEntry(e.key, { isPlan: ev.target.checked })} />
+                    <td>
+                      <div className="relative">
+                        <input type="number" min={0} max={24} step={0.25}
+                               className="input num pr-5 text-right" disabled={readOnly}
+                               value={e.planHours === 0 ? "" : e.planHours} placeholder="0"
+                               title={locale === "ja" ? "予定：見込みの時間" : "Planned: forecast hours"}
+                               onChange={(ev) => updateEntry(e.key, { planHours: Number(ev.target.value) || 0 })} />
+                        <span className="pointer-events-none absolute inset-y-0 right-1.5 flex items-center text-xs text-slate-400">h</span>
+                      </div>
                     </td>
                     <td className="text-center">
                       <button className="btn-ghost btn-sm text-rose-500 hover:bg-rose-50"
@@ -335,6 +365,14 @@ function CheckIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 20 20" fill="currentColor" {...props}>
       <path fillRule="evenodd" d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.5 7.6a1 1 0 0 1-1.427.007l-3.5-3.5a1 1 0 1 1 1.414-1.414l2.79 2.79 6.797-6.89a1 1 0 0 1 1.42-.007Z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+function InfoIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-7-4a1 1 0 1 1-2 0 1 1 0 0 1 2 0ZM9 9a1 1 0 0 0 0 2h.25v3H9a1 1 0 1 0 0 2h3a1 1 0 1 0 0-2h-.25v-4A1 1 0 0 0 10.75 9H9Z" clipRule="evenodd" />
     </svg>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import type { Project, WorkType } from "@/db/schema";
-import type { MonthData, DayData } from "@/lib/period";
+import type { MonthData, DayData, EntryData } from "@/lib/period";
 import { WEEKDAY_VI, WEEKDAY_JA, todayParts, ymd, workedHours } from "@/lib/dates";
 import {
   saveDayAction, copyDayAction, clearDayAction,
@@ -14,7 +14,36 @@ import StatusBadge from "@/components/StatusBadge";
 import MonthNav from "@/components/MonthNav";
 import { useLocale } from "@/components/LocaleProvider";
 
+/**
+ * DB lưu 実績 và 予定 thành 2 bản ghi time_entries riêng (isPlan khác nhau).
+ * Gộp lại thành 1 dòng draft cho mỗi cặp project × 工種 × nội dung trùng nhau
+ * (ghép theo thứ tự xuất hiện — không gộp nhầm 2 dòng thực tế trùng nhau).
+ */
 function toDraft(day: DayData): DayDraft {
+  const buckets = new Map<string, { actual: EntryData[]; plan: EntryData[] }>();
+  for (const e of day.entries) {
+    const key = `${e.projectId}|${e.workTypeId}|${e.description}`;
+    const b = buckets.get(key) ?? { actual: [], plan: [] };
+    (e.isPlan ? b.plan : b.actual).push(e);
+    buckets.set(key, b);
+  }
+  const entries: DraftEntry[] = [];
+  for (const b of buckets.values()) {
+    const n = Math.max(b.actual.length, b.plan.length);
+    for (let i = 0; i < n; i++) {
+      const a = b.actual[i];
+      const p = b.plan[i];
+      const base = (a ?? p)!;
+      entries.push({
+        key: base.id,
+        projectId: base.projectId,
+        workTypeId: base.workTypeId,
+        description: base.description,
+        actualHours: a?.hours ?? 0,
+        planHours: p?.hours ?? 0,
+      });
+    }
+  }
   return {
     startMin: day.startMin,
     endMin: day.endMin,
@@ -22,14 +51,7 @@ function toDraft(day: DayData): DayDraft {
     dayType: day.dayType,
     leaveNote: day.leaveNote,
     remark: day.remark,
-    entries: day.entries.map<DraftEntry>((e) => ({
-      key: e.id,
-      projectId: e.projectId,
-      workTypeId: e.workTypeId,
-      description: e.description,
-      hours: e.hours,
-      isPlan: e.isPlan,
-    })),
+    entries,
   };
 }
 
@@ -74,15 +96,20 @@ export default function TimesheetEditor({
         leaveNote: draft.leaveNote,
         remark: draft.remark,
       },
+      // mỗi dòng draft có cả 実績 và 予定 -> tách lại thành tối đa 2 bản ghi
+      // time_entries (isPlan khác nhau) đúng như DB đang lưu.
       entries: draft.entries
         .filter((e) => e.projectId && e.workTypeId)
-        .map((e) => ({
-          projectId: e.projectId,
-          workTypeId: e.workTypeId,
-          description: e.description,
-          hours: e.hours,
-          isPlan: e.isPlan,
-        })),
+        .flatMap((e) => {
+          const rows: { projectId: string; workTypeId: string; description: string; hours: number; isPlan: boolean }[] = [];
+          if (e.actualHours > 0) {
+            rows.push({ projectId: e.projectId, workTypeId: e.workTypeId, description: e.description, hours: e.actualHours, isPlan: false });
+          }
+          if (e.planHours > 0) {
+            rows.push({ projectId: e.projectId, workTypeId: e.workTypeId, description: e.description, hours: e.planHours, isPlan: true });
+          }
+          return rows;
+        }),
     });
     if (res.ok) {
       setSaveState("saved");
@@ -119,9 +146,8 @@ export default function TimesheetEditor({
     let total = 0;
     for (const [, d] of Object.entries(drafts)) {
       for (const e of d.entries) {
-        if (e.isPlan) continue;
-        total += e.hours;
-        byProject.set(e.projectId, (byProject.get(e.projectId) ?? 0) + e.hours);
+        total += e.actualHours;
+        byProject.set(e.projectId, (byProject.get(e.projectId) ?? 0) + e.actualHours);
       }
     }
     return { total: Math.round(total * 100) / 100, byProject };
@@ -414,9 +440,8 @@ function DayList({
           const endMin = draft ? draft.endMin : d.endMin;
           const breakMin = draft ? draft.breakMin : d.breakMin;
           const attendance = draft ? workedHours(startMin, endMin, breakMin) : d.attendanceHours;
-          const entries = draft ? draft.entries : d.entries;
-          const hours = entries.reduce((s, e) => s + (e.isPlan ? 0 : e.hours), 0);
-          const hasEntries = entries.some((e) => !e.isPlan);
+          const hours = draft ? draft.entries.reduce((s, e) => s + e.actualHours, 0) : d.entryHours;
+          const hasEntries = draft ? draft.entries.some((e) => e.actualHours > 0) : d.entries.some((e) => !e.isPlan);
           const noEntriesWarning = attendance > 0 && !hasEntries;
           const mismatchWarning = attendance > 0 && hasEntries && Math.round((hours - attendance) * 100) / 100 !== 0;
           const hasWarning = noEntriesWarning || mismatchWarning;
