@@ -13,7 +13,6 @@ import { currencySymbol, type BillingCurrency } from "@/lib/currency";
 
 const HEADER_FILL = "FF1E293B";  // slate-800
 const HEADER_FONT = "FFFFFFFF";
-const SUBTOTAL_FILL = "FFE2E8F0"; // slate-200
 const TOTAL_FILL = "FFCBD5E1";    // slate-300
 const BORDER_COLOR = "FFCBD5E1";
 const POSITIVE_COLOR = "FF15803D"; // emerald-700
@@ -43,14 +42,14 @@ function periodLabel(p: { year: number; month: number }) {
 /**
  * Mỗi tháng được lọc theo project (nếu có) và tính billing RIÊNG (factor,
  * 下限/上限, adjustment tính theo đúng dữ liệu tháng đó) rồi mới cộng lại
- * thành subtotal/total — không gộp nhiều tháng thành 1 factor trước khi
- * tính, vì làm vậy sẽ bù trừ tháng thiếu giờ với tháng dư giờ, sai với thực
- * tế từng tháng. Xuất theo từng dòng/tháng để khách hàng so sánh trực tiếp
- * với file estimation của họ (cũng ghi theo từng tháng).
+ * thành TOTAL — không gộp nhiều tháng thành 1 factor trước khi tính, vì làm
+ * vậy sẽ bù trừ tháng thiếu giờ với tháng dư giờ, sai với thực tế từng
+ * tháng. Xuất theo từng dòng/tháng (không có dòng subtotal xen giữa) để
+ * khách hàng so sánh trực tiếp với file estimation của họ (cũng ghi theo
+ * từng tháng), và để dòng TOTAL cộng bằng công thức SUM liên tục.
  */
 async function buildWorkbookCore(title: string, periodsData: PeriodOverview[], currency: BillingCurrency) {
   const moneyUnit = currencySymbol(currency);
-  const isMulti = periodsData.length > 1;
   const wb = new ExcelJS.Workbook();
   wb.creator = "Timesheet";
   wb.created = new Date();
@@ -128,9 +127,10 @@ async function buildWorkbookCore(title: string, periodsData: PeriodOverview[], c
   let sumActual = 0, sumShortage = 0, sumOvertime = 0, sumAdjustHours = 0, sumAdjustMm = 0, sumAmount = 0;
   let countUnder = 0, countOver = 0, countMissingPrice = 0;
 
+  const dataStart = rowIdx;
+
   for (const member of members) {
     member.lines.sort((a, b) => a.month.localeCompare(b.month));
-    const groupStart = rowIdx;
 
     for (const line of member.lines) {
       const { row, calc, month } = line;
@@ -169,41 +169,19 @@ async function buildWorkbookCore(title: string, periodsData: PeriodOverview[], c
       if (calc.weightedUnitPrice <= 0) countMissingPrice++;
       rowIdx++;
     }
-
-    if (isMulti && member.lines.length > 1) {
-      const groupEnd = rowIdx - 1;
-      const r = ws.getRow(rowIdx);
-      r.getCell(2).value = `${member.fullName} — subtotal`;
-      r.getCell(6).value = { formula: `SUM(F${groupStart}:F${groupEnd})`, result: round2(member.lines.reduce((s, l) => s + l.row.usedHours, 0)) };
-      r.getCell(9).value = { formula: `SUM(I${groupStart}:I${groupEnd})`, result: round2(member.lines.reduce((s, l) => s + l.calc.shortageHours, 0)) };
-      r.getCell(10).value = { formula: `SUM(J${groupStart}:J${groupEnd})`, result: round2(member.lines.reduce((s, l) => s + l.calc.overtimeHours, 0)) };
-      r.getCell(11).value = { formula: `SUM(K${groupStart}:K${groupEnd})`, result: round2(member.lines.reduce((s, l) => s + l.calc.adjustmentHours, 0)) };
-      r.getCell(12).value = { formula: `SUM(L${groupStart}:L${groupEnd})`, result: round4(member.lines.reduce((s, l) => s + l.calc.adjustmentMm, 0)) };
-      r.getCell(13).value = { formula: `SUM(M${groupStart}:M${groupEnd})`, result: round0(member.lines.reduce((s, l) => s + l.calc.adjustmentAmount, 0)) };
-      r.getCell(6).numFmt = hourFmt;
-      for (const c of [9, 10, 11]) r.getCell(c).numFmt = hourFmt;
-      r.getCell(12).numFmt = "0.0000";
-      r.getCell(13).numFmt = moneyFmt;
-      for (let c = 1; c <= colCount; c++) {
-        r.getCell(c).font = { bold: true };
-        r.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: SUBTOTAL_FILL } };
-      }
-      applyRowBorder(r, colCount);
-      rowIdx++;
-    }
   }
 
-  // Subtotal xen giữa các dòng nên không cộng bằng 1 formula SUM liên tục
-  // được — ghi số tĩnh đã cộng từ đúng các dòng theo tháng (không tính lại
-  // subtotal) để tránh đếm trùng.
+  const dataEnd = rowIdx - 1;
   const totalRow = ws.getRow(rowIdx);
   totalRow.getCell(1).value = "TOTAL";
-  totalRow.getCell(6).value = round2(sumActual);
-  totalRow.getCell(9).value = round2(sumShortage);
-  totalRow.getCell(10).value = round2(sumOvertime);
-  totalRow.getCell(11).value = round2(sumAdjustHours);
-  totalRow.getCell(12).value = round4(sumAdjustMm);
-  totalRow.getCell(13).value = round0(sumAmount);
+  if (dataEnd >= dataStart) {
+    totalRow.getCell(6).value = { formula: `SUM(F${dataStart}:F${dataEnd})`, result: round2(sumActual) };
+    totalRow.getCell(9).value = { formula: `SUM(I${dataStart}:I${dataEnd})`, result: round2(sumShortage) };
+    totalRow.getCell(10).value = { formula: `SUM(J${dataStart}:J${dataEnd})`, result: round2(sumOvertime) };
+    totalRow.getCell(11).value = { formula: `SUM(K${dataStart}:K${dataEnd})`, result: round2(sumAdjustHours) };
+    totalRow.getCell(12).value = { formula: `SUM(L${dataStart}:L${dataEnd})`, result: round4(sumAdjustMm) };
+    totalRow.getCell(13).value = { formula: `SUM(M${dataStart}:M${dataEnd})`, result: round0(sumAmount) };
+  }
   totalRow.getCell(6).numFmt = hourFmt;
   for (const c of [9, 10, 11]) totalRow.getCell(c).numFmt = hourFmt;
   totalRow.getCell(12).numFmt = "0.0000";
