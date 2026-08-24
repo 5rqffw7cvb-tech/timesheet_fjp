@@ -6,6 +6,8 @@ import {
 import { daysInMonth, ymd, workedHours } from "./dates";
 import { defaultWorkingDays, monthRange } from "./period";
 
+const HOURS_PER_CONG = 180;
+
 /**
  * Member×project vẫn đang trong khoảng Assigned period của tháng này nhưng
  * chưa có budget row cho tháng này -> tự copy 工数(quota) từ tháng gần nhất
@@ -179,6 +181,14 @@ export async function monthOverview(year: number, month: number): Promise<Overvi
       .sort((a, b) => a.code.localeCompare(b.code));
     const att = attendanceByUser.get(u.id) ?? { hours: 0, days: 0 };
     const report = reportByUser.get(u.id);
+    const budgetHours = round2(per.reduce((s, p) => s + p.budget, 0));
+    // Factor dùng cho 下限/上限 (140h・180h * factor) = tổng 工数 đã assign tháng
+    // này quy đổi ra 人月 (1.0 = 180h), không phải số cố định nhập tay nữa —
+    // assign 0.5 + 0.7 ở 2 project thì factor tháng đó = 1.2. Member chưa có
+    // budget nào tháng này thì fallback về billingFactor tĩnh (mặc định 1).
+    const billingFactor = budgetHours > 0
+      ? round2(budgetHours / HOURS_PER_CONG)
+      : Number(u.billingFactor ?? 1);
     return {
       userId: u.id,
       fullName: u.fullName,
@@ -186,12 +196,12 @@ export async function monthOverview(year: number, month: number): Promise<Overvi
       username: u.username,
       roleTitle: u.roleTitle,
       billingUnitPrice: Number(u.billingUnitPrice ?? 0),
-      billingFactor: Number(u.billingFactor ?? 1),
+      billingFactor,
       status: report?.status ?? "DRAFT",
       submittedAt: report?.submittedAt ?? null,
       memberNote: report?.memberNote ?? null,
       reviewNote: report?.reviewNote ?? null,
-      budgetHours: round2(per.reduce((s, p) => s + p.budget, 0)),
+      budgetHours,
       usedHours: round2(per.reduce((s, p) => s + p.used, 0)),
       attendanceHours: round2(att.hours),
       daysLogged: att.days,

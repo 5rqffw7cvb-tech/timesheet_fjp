@@ -231,6 +231,11 @@ function MemberForm({
             value={String(form.billingFactor)}
             onChange={(e) => set("billingFactor", e.target.value)}
           />
+          <p className="mt-1 text-[11px] text-slate-400">
+            {locale === "ja"
+              ? "その月にBudgetで工数を割り当てた場合は自動計算（合計工数÷180h）を優先。未割当の月のみこの値を使用。"
+              : "Auto-computed from that month's total assigned budget (÷180h) once any project has hours in Budget. Used as fallback only for months with no assignment."}
+          </p>
         </Field>
         <Field label={t("membersLocation")}>
           <select className="select" value={form.location} onChange={(e) => set("location", e.target.value)}>
