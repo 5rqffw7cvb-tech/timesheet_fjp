@@ -58,6 +58,10 @@ export default function DayEditor({
   const attendance = workedHours(draft.startMin, draft.endMin, draft.breakMin);
   const entryTotal = draft.entries.reduce((s, e) => s + (e.isPlan ? 0 : e.hours), 0);
   const diff = Math.round((entryTotal - attendance) * 100) / 100;
+  const hasActualEntries = draft.entries.some((e) => !e.isPlan);
+  const noEntriesWarning = attendance > 0 && !hasActualEntries;
+  const mismatchWarning = attendance > 0 && hasActualEntries && diff !== 0;
+  const hasWarning = noEntriesWarning || mismatchWarning;
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: "project", dir: "asc" });
 
@@ -188,22 +192,57 @@ export default function DayEditor({
 
         {/* các dòng công việc */}
         <div>
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
               {t("timesheetWorkDetails")}
             </h3>
-            <div className="text-xs num">
-              <span className="text-slate-500">{locale === "ja" ? "合計: " : "Total: "}</span>
+            <div className="flex items-center gap-1.5 text-xs num">
+              <span className="text-slate-500">{locale === "ja" ? "合計" : "Total"}</span>
               <span className="font-semibold text-slate-700">{entryTotal.toFixed(2)}h</span>
-              {attendance > 0 && (
-                  <span className={`ml-2 ${diff === 0 ? "text-emerald-600" : "text-amber-600"}`}>
-                  {diff === 0 ? (locale === "ja" ? "就業時間と一致" : "matches attendance") : `${locale === "ja" ? "差分" : "diff"} ${diff > 0 ? "+" : ""}${diff.toFixed(2)}h`}
+              {attendance > 0 && !hasWarning && (
+                <span className="inline-flex items-center gap-1 text-emerald-600">
+                  <CheckIcon className="h-3.5 w-3.5" />
+                  {locale === "ja" ? "就業時間と一致" : "Matches attendance"}
                 </span>
               )}
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-md border border-slate-200">
+          {hasWarning && (
+            <div
+              role="alert"
+              className={`mb-2 flex items-start gap-2 rounded-md border px-3 py-2 text-xs leading-relaxed ${
+                noEntriesWarning
+                  ? "border-rose-300 bg-rose-50 text-rose-700"
+                  : "border-amber-300 bg-amber-50 text-amber-700"
+              }`}
+            >
+              <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                {noEntriesWarning ? (
+                  locale === "ja" ? (
+                    <>就業時間が <b className="num">{attendance.toFixed(2)}h</b> 入力されていますが、作業明細が1件も入力されていません。下の表に業務内容を追加してください。</>
+                  ) : (
+                    <>Attendance is recorded as <b className="num">{attendance.toFixed(2)}h</b>, but no work-detail rows have been entered yet. Add at least one row below.</>
+                  )
+                ) : locale === "ja" ? (
+                  <>作業明細の合計 <b className="num">{entryTotal.toFixed(2)}h</b> が就業時間 <b className="num">{attendance.toFixed(2)}h</b> と一致しません（差分 <b className="num">{diff > 0 ? "+" : ""}{diff.toFixed(2)}h</b>）。工数の入力をご確認ください。</>
+                ) : (
+                  <>Work-detail total <b className="num">{entryTotal.toFixed(2)}h</b> doesn&apos;t match attendance <b className="num">{attendance.toFixed(2)}h</b> (diff <b className="num">{diff > 0 ? "+" : ""}{diff.toFixed(2)}h</b>). Please double-check the hours entered.</>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div
+            className={`overflow-x-auto rounded-md border transition-colors ${
+              noEntriesWarning
+                ? "border-rose-300 ring-1 ring-rose-100"
+                : mismatchWarning
+                ? "border-amber-300 ring-1 ring-amber-100"
+                : "border-slate-200"
+            }`}
+          >
             <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2">
               <input className="input w-64" placeholder={t("lineSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
             </div>
@@ -281,5 +320,21 @@ export default function DayEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+function WarningIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M8.485 2.495c.673-1.166 2.357-1.166 3.03 0l6.28 10.875c.673 1.167-.169 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 6a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 6Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+function CheckIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.5 7.6a1 1 0 0 1-1.427.007l-3.5-3.5a1 1 0 1 1 1.414-1.414l2.79 2.79 6.797-6.89a1 1 0 0 1 1.42-.007Z" clipRule="evenodd" />
+    </svg>
   );
 }

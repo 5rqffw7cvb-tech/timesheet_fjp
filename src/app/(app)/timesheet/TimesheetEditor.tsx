@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import type { Project, WorkType } from "@/db/schema";
 import type { MonthData, DayData } from "@/lib/period";
-import { WEEKDAY_VI, WEEKDAY_JA, todayParts, ymd } from "@/lib/dates";
+import { WEEKDAY_VI, WEEKDAY_JA, todayParts, ymd, workedHours } from "@/lib/dates";
 import {
   saveDayAction, copyDayAction, clearDayAction,
   submitMonthAction, withdrawMonthAction, fillWorkdaysAction,
@@ -410,12 +410,22 @@ function DayList({
       <div className="max-h-[600px] overflow-y-auto">
         {data.days.map((d) => {
           const draft = drafts[d.day];
-          const hours = draft
-            ? draft.entries.reduce((s, e) => s + (e.isPlan ? 0 : e.hours), 0)
-            : d.entryHours;
+          const startMin = draft ? draft.startMin : d.startMin;
+          const endMin = draft ? draft.endMin : d.endMin;
+          const breakMin = draft ? draft.breakMin : d.breakMin;
+          const attendance = draft ? workedHours(startMin, endMin, breakMin) : d.attendanceHours;
+          const entries = draft ? draft.entries : d.entries;
+          const hours = entries.reduce((s, e) => s + (e.isPlan ? 0 : e.hours), 0);
+          const hasEntries = entries.some((e) => !e.isPlan);
+          const noEntriesWarning = attendance > 0 && !hasEntries;
+          const mismatchWarning = attendance > 0 && hasEntries && Math.round((hours - attendance) * 100) / 100 !== 0;
+          const hasWarning = noEntriesWarning || mismatchWarning;
           const on = d.day === selected;
           const isToday = isCurrentMonth && d.day === today.day;
           const off = d.isWeekend || d.isHoliday || draft?.dayType === "PUBLIC_OFF";
+          const warningTitle = noEntriesWarning
+            ? (locale === "ja" ? "就業時間はありますが作業明細が未入力です" : "Attendance recorded but no work-detail rows")
+            : (locale === "ja" ? "作業明細の合計が就業時間と一致しません" : "Work-detail total doesn't match attendance");
 
           return (
             <button
@@ -423,7 +433,8 @@ function DayList({
               onClick={() => onSelect(d.day)}
               className={`flex w-full items-center gap-2 border-b border-slate-100 px-3 py-1.5 text-left text-sm transition
                 ${on ? "bg-brand-50 ring-1 ring-inset ring-brand-200" : "hover:bg-slate-50"}
-                ${off && !on ? "bg-slate-50/60" : ""}`}
+                ${off && !on ? "bg-slate-50/60" : ""}
+                ${hasWarning && !on ? (noEntriesWarning ? "bg-rose-50/60" : "bg-amber-50/60") : ""}`}
             >
               <span className={`w-7 shrink-0 text-right font-semibold num ${
                 off ? "text-rose-400" : "text-slate-600"}`}>
@@ -434,6 +445,13 @@ function DayList({
               </span>
               {isToday && <span className="badge bg-brand-600 px-1.5 py-0 text-[10px] text-white">{locale === "ja" ? "今日" : "today"}</span>}
               <span className="ml-auto flex items-center gap-2">
+                {hasWarning && (
+                  <span title={warningTitle} className={`shrink-0 ${noEntriesWarning ? "text-rose-500" : "text-amber-500"}`}>
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.166 2.357-1.166 3.03 0l6.28 10.875c.673 1.167-.169 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 6a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 6Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                    </svg>
+                  </span>
+                )}
                 {draft?.leaveNote && (
                   <span className="max-w-[70px] truncate text-[11px] text-amber-600">{draft.leaveNote}</span>
                 )}
