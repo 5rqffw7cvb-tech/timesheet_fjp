@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { monthOverviewForPeriods } from "@/lib/adminData";
+import { monthOverviewByPeriod } from "@/lib/adminData";
 import { buildBillingWorkbookWithLabel, billingFileName } from "@/lib/excel/billingReport";
 import { db } from "@/db";
 import { orgSettings } from "@/db/schema";
@@ -40,18 +40,14 @@ export async function GET(req: Request) {
     : [];
 
   try {
-    const rows = await monthOverviewForPeriods(
+    const periodsData = await monthOverviewByPeriod(
       periods,
       projectIds,
       scope === "all" ? "all" : "approved",
     );
-    const targets = rows.filter((r) => {
-      const hasData = r.usedHours > 0 || r.attendanceHours > 0;
-      if (!hasData) return false;
-      return true;
-    });
+    const hasAnyData = periodsData.some((p) => p.rows.some((r) => r.usedHours > 0 || r.attendanceHours > 0));
 
-    if (targets.length === 0) {
+    if (!hasAnyData) {
       return NextResponse.json(
         { error: scope === "all" ? "No members have data." : "No members have been approved." },
         { status: 404 },
@@ -67,7 +63,7 @@ export async function GET(req: Request) {
 
     const [org] = await db.select().from(orgSettings).limit(1);
     const currency = normalizeBillingCurrency(org?.billingCurrency);
-    const buffer = buildBillingWorkbookWithLabel(label, targets, currency);
+    const buffer = buildBillingWorkbookWithLabel(label, periodsData, currency);
     const fileName = billingFileName(first.year, first.month).replace(
       `${first.year}年${String(first.month).padStart(2, "0")}月`,
       label,

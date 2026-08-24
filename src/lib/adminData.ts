@@ -226,34 +226,74 @@ export interface PeriodKey {
   month: number;
 }
 
-export async function monthOverviewForPeriods(
-  periods: PeriodKey[],
-  projectIds?: string[],
-  scope: "all" | "approved" = "all",
-): Promise<OverviewRow[]> {
-  const uniquePeriods = [...new Map(
+function uniquePeriodsOf(periods: PeriodKey[]): PeriodKey[] {
+  return [...new Map(
     periods
       .filter((p) => p.year > 0 && p.month >= 1 && p.month <= 12)
       .map((p) => [`${p.year}-${p.month}`, p]),
   ).values()];
+}
 
+/**
+ * Lọc theo project + scope cho MỘT tháng, không cộng dồn với tháng khác.
+ * billingFactor khi có lọc project phải tính lại từ đúng 工数 đã lọc (không
+ * dùng factor tính trên toàn bộ project của monthOverview) — nếu không, lọc
+ * theo project sẽ không làm thay đổi 下限/上限 hiển thị dù dữ liệu đã khác.
+ */
+function filterOverviewRows(rows: OverviewRow[], filterSet: Set<string> | null, scope: "all" | "approved"): OverviewRow[] {
+  return rows
+    .filter((row) => scope !== "approved" || row.status === "APPROVED")
+    .map((row) => {
+      const byProject = filterSet ? row.byProject.filter((p) => filterSet.has(p.projectId)) : row.byProject;
+      const usedHours = round2(byProject.reduce((s, p) => s + p.used, 0));
+      const budgetHours = round2(byProject.reduce((s, p) => s + p.budget, 0));
+      const billingFactor = filterSet
+        ? (budgetHours > 0 ? round2(budgetHours / HOURS_PER_CONG) : 0)
+        : row.billingFactor;
+      return { ...row, byProject, usedHours, budgetHours, billingFactor };
+    });
+}
+
+export interface PeriodOverview {
+  period: PeriodKey;
+  rows: OverviewRow[];
+}
+
+/**
+ * Giữ riêng từng tháng (không cộng dồn) — dùng cho billing, vì 下限/上限 phải
+ * tính theo factor của ĐÚNG tháng đó rồi mới cộng adjustment lại; gộp nhiều
+ * tháng thành 1 factor trước khi tính sẽ làm sai kết quả khi 1 tháng thiếu
+ * giờ còn tháng khác dư giờ (bù trừ lẫn nhau, khác thực tế từng tháng).
+ */
+export async function monthOverviewByPeriod(
+  periods: PeriodKey[],
+  projectIds?: string[],
+  scope: "all" | "approved" = "all",
+): Promise<PeriodOverview[]> {
+  const uniquePeriods = uniquePeriodsOf(periods);
   if (uniquePeriods.length === 0) return [];
 
   const filterSet = projectIds?.length ? new Set(projectIds) : null;
   const maps = await Promise.all(uniquePeriods.map((p) => monthOverview(p.year, p.month)));
 
+  return uniquePeriods.map((period, i) => ({
+    period,
+    rows: filterOverviewRows(maps[i], filterSet, scope),
+  }));
+}
+
+export async function monthOverviewForPeriods(
+  periods: PeriodKey[],
+  projectIds?: string[],
+  scope: "all" | "approved" = "all",
+): Promise<OverviewRow[]> {
+  const perPeriod = await monthOverviewByPeriod(periods, projectIds, scope);
+  if (perPeriod.length === 0) return [];
+
   const combined = new Map<string, OverviewRow>();
 
-  for (const rows of maps) {
+  for (const { rows } of perPeriod) {
     for (const row of rows) {
-      if (scope === "approved" && row.status !== "APPROVED") continue;
-
-      const byProject = filterSet
-        ? row.byProject.filter((p) => filterSet.has(p.projectId))
-        : row.byProject;
-      const usedHours = round2(byProject.reduce((s, p) => s + p.used, 0));
-      const budgetHours = round2(byProject.reduce((s, p) => s + p.budget, 0));
-
       if (!combined.has(row.userId)) {
         combined.set(row.userId, {
           ...row,
@@ -262,17 +302,19 @@ export async function monthOverviewForPeriods(
           usedHours: 0,
           attendanceHours: 0,
           daysLogged: 0,
+          billingFactor: 0,
         });
       }
 
       const acc = combined.get(row.userId)!;
       acc.attendanceHours = round2(acc.attendanceHours + row.attendanceHours);
       acc.daysLogged += row.daysLogged;
-      acc.usedHours = round2(acc.usedHours + usedHours);
-      acc.budgetHours = round2(acc.budgetHours + budgetHours);
+      acc.usedHours = round2(acc.usedHours + row.usedHours);
+      acc.budgetHours = round2(acc.budgetHours + row.budgetHours);
+      acc.billingFactor = round2(acc.billingFactor + row.billingFactor);
 
       const projectMap = new Map(acc.byProject.map((p) => [p.projectId, p]));
-      for (const p of byProject) {
+      for (const p of row.byProject) {
         const current = projectMap.get(p.projectId);
         if (current) {
           const prevUsed = current.used;
