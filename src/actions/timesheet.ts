@@ -11,6 +11,20 @@ import { requireUser } from "@/lib/auth";
 import { ensureReport, loadMonth, findMismatchedDays } from "@/lib/period";
 import { parseYmd } from "@/lib/dates";
 
+/**
+ * Admin có thể xem/sửa/提出 lại timesheet của member khác (màn hình
+ * メンバーのタイムシート) bằng cách truyền targetUserId. Member thường không
+ * truyền (hoặc truyền đúng id của mình) nên không ảnh hưởng luồng cũ.
+ */
+async function resolveActingUserId(
+  targetUserId: string | undefined,
+  actor: { id: string; role: string },
+): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  if (!targetUserId || targetUserId === actor.id) return { ok: true, userId: actor.id };
+  if (actor.role !== "ADMIN") return { ok: false, error: "Not authorized to edit another member's timesheet." };
+  return { ok: true, userId: targetUserId };
+}
+
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date");
 
 const daySchema = z.object({
@@ -55,8 +69,12 @@ async function assertEditable(userId: string, year: number, month: number) {
   }
 }
 
-export async function saveDayAction(input: unknown): Promise<SaveResult> {
+export async function saveDayAction(input: unknown, targetUserId?: string): Promise<SaveResult> {
   const user = await requireUser();
+  const target = await resolveActingUserId(targetUserId, user);
+  if (!target.ok) return target;
+  const uid = target.userId;
+
   const parsed = saveSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid data" };
@@ -65,7 +83,7 @@ export async function saveDayAction(input: unknown): Promise<SaveResult> {
   const { year, month } = parseYmd(day.date);
 
   try {
-    await assertEditable(user.id, year, month);
+    await assertEditable(uid, year, month);
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -77,7 +95,7 @@ export async function saveDayAction(input: unknown): Promise<SaveResult> {
   await db.transaction(async (tx) => {
     if (hasDayInfo) {
       await tx.insert(dayLogs).values({
-        userId: user.id,
+        userId: uid,
         date: day.date,
         startMin: day.startMin,
         endMin: day.endMin,
@@ -95,16 +113,16 @@ export async function saveDayAction(input: unknown): Promise<SaveResult> {
       });
     } else {
       await tx.delete(dayLogs)
-        .where(and(eq(dayLogs.userId, user.id), eq(dayLogs.date, day.date)));
+        .where(and(eq(dayLogs.userId, uid), eq(dayLogs.date, day.date)));
     }
 
     await tx.delete(timeEntries)
-      .where(and(eq(timeEntries.userId, user.id), eq(timeEntries.date, day.date)));
+      .where(and(eq(timeEntries.userId, uid), eq(timeEntries.date, day.date)));
 
     const rows = entries
       .filter((e) => e.hours > 0)
       .map((e) => ({
-        userId: user.id,
+        userId: uid,
         date: day.date,
         projectId: e.projectId,
         workTypeId: e.workTypeId,
@@ -115,30 +133,38 @@ export async function saveDayAction(input: unknown): Promise<SaveResult> {
     if (rows.length) await tx.insert(timeEntries).values(rows);
   });
 
-  await ensureReport(user.id, year, month);
+  if (uid !== user.id) {
+    await db.insert(auditLogs).values({ actorId: user.id, action: "ADMIN_EDIT_DAY", target: `${uid}:${day.date}` });
+  }
+
+  await ensureReport(uid, year, month);
   revalidatePath("/timesheet");
   return { ok: true };
 }
 
 /** Chép giờ vào/ra + các dòng công việc của một ngày sang ngày khác. */
 export async function copyDayAction(
-  fromDate: string, toDate: string,
+  fromDate: string, toDate: string, targetUserId?: string,
 ): Promise<SaveResult> {
   const user = await requireUser();
+  const target = await resolveActingUserId(targetUserId, user);
+  if (!target.ok) return target;
+  const uid = target.userId;
+
   if (!dateSchema.safeParse(fromDate).success || !dateSchema.safeParse(toDate).success) {
     return { ok: false, error: "Invalid date" };
   }
   const { year, month } = parseYmd(toDate);
   try {
-    await assertEditable(user.id, year, month);
+    await assertEditable(uid, year, month);
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
 
   const [srcLog] = await db.select().from(dayLogs)
-    .where(and(eq(dayLogs.userId, user.id), eq(dayLogs.date, fromDate))).limit(1);
+    .where(and(eq(dayLogs.userId, uid), eq(dayLogs.date, fromDate))).limit(1);
   const srcEntries = await db.select().from(timeEntries)
-    .where(and(eq(timeEntries.userId, user.id), eq(timeEntries.date, fromDate)));
+    .where(and(eq(timeEntries.userId, uid), eq(timeEntries.date, fromDate)));
 
   if (!srcLog && srcEntries.length === 0) {
     return { ok: false, error: "The source day has no data to copy." };
@@ -147,7 +173,7 @@ export async function copyDayAction(
   await db.transaction(async (tx) => {
     if (srcLog) {
       await tx.insert(dayLogs).values({
-        userId: user.id, date: toDate,
+        userId: uid, date: toDate,
         startMin: srcLog.startMin, endMin: srcLog.endMin, breakMin: srcLog.breakMin,
         dayType: srcLog.dayType, leaveNote: srcLog.leaveNote, remark: srcLog.remark,
       }).onConflictDoUpdate({
@@ -159,32 +185,40 @@ export async function copyDayAction(
       });
     }
     await tx.delete(timeEntries)
-      .where(and(eq(timeEntries.userId, user.id), eq(timeEntries.date, toDate)));
+      .where(and(eq(timeEntries.userId, uid), eq(timeEntries.date, toDate)));
     if (srcEntries.length) {
       await tx.insert(timeEntries).values(srcEntries.map((e) => ({
-        userId: user.id, date: toDate, projectId: e.projectId,
+        userId: uid, date: toDate, projectId: e.projectId,
         workTypeId: e.workTypeId, description: e.description,
         hours: e.hours, isPlan: e.isPlan,
       })));
     }
   });
 
-  await ensureReport(user.id, year, month);
+  if (uid !== user.id) {
+    await db.insert(auditLogs).values({ actorId: user.id, action: "ADMIN_COPY_DAY", target: `${uid}:${fromDate}->${toDate}` });
+  }
+
+  await ensureReport(uid, year, month);
   revalidatePath("/timesheet");
   return { ok: true };
 }
 
 export async function submitMonthAction(
-  year: number, month: number, note: string,
+  year: number, month: number, note: string, targetUserId?: string,
 ): Promise<SaveResult> {
   const user = await requireUser();
-  const report = await ensureReport(user.id, year, month);
+  const target = await resolveActingUserId(targetUserId, user);
+  if (!target.ok) return target;
+  const uid = target.userId;
+
+  const report = await ensureReport(uid, year, month);
   if (!report) return { ok: false, error: "Report period not found." };
   if (report.status === "APPROVED") {
     return { ok: false, error: "This month is closed." };
   }
 
-  const monthData = await loadMonth(user.id, year, month);
+  const monthData = await loadMonth(uid, year, month);
   const badDays = findMismatchedDays(monthData.days);
   if (badDays.length > 0) {
     return {
@@ -202,17 +236,24 @@ export async function submitMonthAction(
   }).where(eq(monthlyReports.id, report.id));
 
   await db.insert(auditLogs).values({
-    actorId: user.id, action: "SUBMIT_MONTH", target: `${year}-${month}`,
+    actorId: user.id,
+    action: uid === user.id ? "SUBMIT_MONTH" : "ADMIN_SUBMIT_MONTH",
+    target: `${uid}:${year}-${month}`,
   });
   revalidatePath("/timesheet");
+  if (uid !== user.id) revalidatePath("/admin/approvals");
   return { ok: true };
 }
 
 export async function withdrawMonthAction(
-  year: number, month: number,
+  year: number, month: number, targetUserId?: string,
 ): Promise<SaveResult> {
   const user = await requireUser();
-  const report = await ensureReport(user.id, year, month);
+  const target = await resolveActingUserId(targetUserId, user);
+  if (!target.ok) return target;
+  const uid = target.userId;
+
+  const report = await ensureReport(uid, year, month);
   if (!report) return { ok: false, error: "Report period not found." };
   if (report.status === "APPROVED") {
     return { ok: false, error: "This month is closed; contact an administrator to reopen it." };
@@ -220,26 +261,39 @@ export async function withdrawMonthAction(
   await db.update(monthlyReports)
     .set({ status: "DRAFT", submittedAt: null, updatedAt: new Date() })
     .where(eq(monthlyReports.id, report.id));
+
+  if (uid !== user.id) {
+    await db.insert(auditLogs).values({ actorId: user.id, action: "ADMIN_WITHDRAW_MONTH", target: `${uid}:${year}-${month}` });
+    revalidatePath("/admin/approvals");
+  }
   revalidatePath("/timesheet");
   return { ok: true };
 }
 
 /** Xoá sạch dữ liệu của một ngày. */
-export async function clearDayAction(date: string): Promise<SaveResult> {
+export async function clearDayAction(date: string, targetUserId?: string): Promise<SaveResult> {
   const user = await requireUser();
+  const target = await resolveActingUserId(targetUserId, user);
+  if (!target.ok) return target;
+  const uid = target.userId;
+
   if (!dateSchema.safeParse(date).success) return { ok: false, error: "Invalid date" };
   const { year, month } = parseYmd(date);
   try {
-    await assertEditable(user.id, year, month);
+    await assertEditable(uid, year, month);
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
   await db.transaction(async (tx) => {
     await tx.delete(timeEntries)
-      .where(and(eq(timeEntries.userId, user.id), eq(timeEntries.date, date)));
+      .where(and(eq(timeEntries.userId, uid), eq(timeEntries.date, date)));
     await tx.delete(dayLogs)
-      .where(and(eq(dayLogs.userId, user.id), eq(dayLogs.date, date)));
+      .where(and(eq(dayLogs.userId, uid), eq(dayLogs.date, date)));
   });
+
+  if (uid !== user.id) {
+    await db.insert(auditLogs).values({ actorId: user.id, action: "ADMIN_CLEAR_DAY", target: `${uid}:${date}` });
+  }
   revalidatePath("/timesheet");
   return { ok: true };
 }
@@ -248,10 +302,15 @@ export async function clearDayAction(date: string): Promise<SaveResult> {
 export async function fillWorkdaysAction(
   year: number, month: number,
   startMin: number, endMin: number, breakMin: number,
+  targetUserId?: string,
 ): Promise<SaveResult & { filled?: number }> {
   const user = await requireUser();
+  const target = await resolveActingUserId(targetUserId, user);
+  if (!target.ok) return target;
+  const uid = target.userId;
+
   try {
-    await assertEditable(user.id, year, month);
+    await assertEditable(uid, year, month);
   } catch (e) {
     return { ok: false, error: (e as Error).message };
   }
@@ -260,7 +319,7 @@ export async function fillWorkdaysAction(
   const total = daysInMonth(year, month);
   const existing = new Set(
     (await db.select({ d: dayLogs.date }).from(dayLogs)
-      .where(eq(dayLogs.userId, user.id))).map((r) => r.d),
+      .where(eq(dayLogs.userId, uid))).map((r) => r.d),
   );
 
   const rows = [];
@@ -268,10 +327,15 @@ export async function fillWorkdaysAction(
     if (mondayIndex(year, month, d) >= 5) continue;
     const date = ymd(year, month, d);
     if (existing.has(date)) continue;
-    rows.push({ userId: user.id, date, startMin, endMin, breakMin, dayType: "WORK" as const });
+    rows.push({ userId: uid, date, startMin, endMin, breakMin, dayType: "WORK" as const });
   }
   if (rows.length) await db.insert(dayLogs).values(rows).onConflictDoNothing();
-  await ensureReport(user.id, year, month);
+
+  if (uid !== user.id && rows.length) {
+    await db.insert(auditLogs).values({ actorId: user.id, action: "ADMIN_FILL_WORKDAYS", target: `${uid}:${year}-${month}` });
+  }
+
+  await ensureReport(uid, year, month);
   revalidatePath("/timesheet");
   return { ok: true, filled: rows.length };
 }

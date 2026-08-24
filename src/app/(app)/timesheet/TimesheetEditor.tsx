@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import type { Project, WorkType } from "@/db/schema";
 import type { MonthData, DayData, EntryData } from "@/lib/period";
 import { WEEKDAY_VI, WEEKDAY_JA, todayParts, ymd, workedHours } from "@/lib/dates";
@@ -13,6 +14,8 @@ import BudgetBar from "@/components/BudgetBar";
 import StatusBadge from "@/components/StatusBadge";
 import MonthNav from "@/components/MonthNav";
 import { useLocale } from "@/components/LocaleProvider";
+
+export interface MemberOption { id: string; fullName: string; roleTitle: string | null }
 
 /** Ngày có 就業時間 nhưng thiếu hẳn 作業明細 thực tế, hay có nhưng tổng giờ lệch. */
 function dayMismatchKind(attendance: number, actualTotal: number): "none" | "missing" | "mismatch" {
@@ -63,11 +66,16 @@ function toDraft(day: DayData): DayDraft {
 }
 
 export default function TimesheetEditor({
-  data, projects, workTypes,
+  data, projects, workTypes, viewingUserId, viewingUserName, isAdmin, members,
 }: {
   data: MonthData;
   projects: Project[];
   workTypes: WorkType[];
+  /** id của member đang được xem/sửa — bằng chính id của người đăng nhập khi tự xem. */
+  viewingUserId: string;
+  viewingUserName: string;
+  isAdmin: boolean;
+  members?: MemberOption[];
 }) {
   const readOnly = data.locked;
   const { t, locale } = useLocale();
@@ -117,7 +125,7 @@ export default function TimesheetEditor({
           }
           return rows;
         }),
-    });
+    }, viewingUserId);
     if (res.ok) {
       setSaveState("saved");
       setErrorMsg(null);
@@ -126,7 +134,7 @@ export default function TimesheetEditor({
       setSaveState("error");
       setErrorMsg(res.error ?? (locale === "ja" ? "保存に失敗しました。" : "Save failed"));
     }
-  }, [data.year, data.month]);
+  }, [data.year, data.month, viewingUserId]);
 
   function handleChange(next: DayDraft) {
     setDrafts((prev) => ({ ...prev, [selected]: next }));
@@ -197,7 +205,7 @@ export default function TimesheetEditor({
     if (!prev) return;
     await flushPending();
     startTransition(async () => {
-      const res = await copyDayAction(prev.date, ymd(data.year, data.month, selected));
+      const res = await copyDayAction(prev.date, ymd(data.year, data.month, selected), viewingUserId);
       if (!res.ok) { setSaveState("error"); setErrorMsg(res.error ?? null); }
     });
   }
@@ -209,7 +217,7 @@ export default function TimesheetEditor({
       [selected]: { startMin: null, endMin: null, breakMin: 60, dayType: "WORK", leaveNote: null, remark: null, entries: [] },
     }));
     startTransition(async () => {
-      await clearDayAction(ymd(data.year, data.month, selected));
+      await clearDayAction(ymd(data.year, data.month, selected), viewingUserId);
     });
   }
 
@@ -219,6 +227,14 @@ export default function TimesheetEditor({
 
   return (
     <div className="space-y-4">
+      {isAdmin && (
+        <MemberSwitcher
+          members={members ?? []}
+          viewingUserId={viewingUserId}
+          viewingUserName={viewingUserName}
+        />
+      )}
+
       <Toolbar
         data={data}
         liveTotal={liveTotals.total}
@@ -226,6 +242,7 @@ export default function TimesheetEditor({
         errorMsg={errorMsg}
         onBeforeAction={flushPending}
         mismatchedDays={mismatchedDays}
+        viewingUserId={viewingUserId}
       />
 
       <div className="grid gap-4 lg:grid-cols-[290px_minmax(0,1fr)]">
@@ -279,10 +296,53 @@ export default function TimesheetEditor({
   );
 }
 
+/* ─────────────────────────── Chọn member (admin) ─────────────────────────── */
+
+function MemberSwitcher({
+  members, viewingUserId, viewingUserName,
+}: {
+  members: MemberOption[];
+  viewingUserId: string;
+  viewingUserName: string;
+}) {
+  const { locale } = useLocale();
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const knownOption = members.some((m) => m.id === viewingUserId);
+
+  function go(userId: string) {
+    const p = new URLSearchParams(params.toString());
+    p.set("user", userId);
+    router.push(`${pathname}?${p.toString()}`);
+  }
+
+  return (
+    <div className="card flex flex-wrap items-center gap-3 border-l-4 border-l-brand-400 px-4 py-3">
+      <label className="text-sm font-medium text-slate-600">
+        {locale === "ja" ? "表示するメンバー" : "Viewing member"}
+      </label>
+      <select className="select w-64" value={knownOption ? viewingUserId : ""} onChange={(e) => go(e.target.value)}>
+        {!knownOption && <option value="" disabled>{viewingUserName}</option>}
+        {members.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.fullName}{m.roleTitle ? ` — ${m.roleTitle}` : ""}
+          </option>
+        ))}
+      </select>
+      <span className="text-xs text-slate-400">
+        {locale === "ja"
+          ? "選んだメンバーの内容を管理者が直接閲覧・編集・提出できます。"
+          : "View, edit, and submit on behalf of the selected member."}
+      </span>
+    </div>
+  );
+}
+
 /* ─────────────────────────── Toolbar ─────────────────────────── */
 
 function Toolbar({
-  data, liveTotal, saveState, errorMsg, onBeforeAction, mismatchedDays,
+  data, liveTotal, saveState, errorMsg, onBeforeAction, mismatchedDays, viewingUserId,
 }: {
   data: MonthData;
   liveTotal: number;
@@ -290,6 +350,7 @@ function Toolbar({
   errorMsg: string | null;
   onBeforeAction: () => Promise<void>;
   mismatchedDays: number[];
+  viewingUserId: string;
 }) {
   const { t, locale } = useLocale();
   const [note, setNote] = useState(data.report.memberNote ?? "");
@@ -304,14 +365,14 @@ function Toolbar({
     if (!confirm(locale === "ja" ? "この月を管理者へ提出しますか？提出後は取り消すまで編集できません。" : "Submit this month to management? After submission you can't edit until you withdraw it.")) return;
     setBusy(true);
     await onBeforeAction();
-    const res = await submitMonthAction(data.year, data.month, note);
+    const res = await submitMonthAction(data.year, data.month, note, viewingUserId);
     setBusy(false);
     setMsg(res.ok ? (locale === "ja" ? "提出しました。" : "Submitted.") : res.error ?? (locale === "ja" ? "エラー" : "Error"));
   }
 
   async function withdraw() {
     setBusy(true);
-    const res = await withdrawMonthAction(data.year, data.month);
+    const res = await withdrawMonthAction(data.year, data.month, viewingUserId);
     setBusy(false);
     setMsg(res.ok ? (locale === "ja" ? "提出を取り消しました。再編集できます。" : "Withdrawn. You can edit again.") : res.error ?? (locale === "ja" ? "エラー" : "Error"));
   }
@@ -376,7 +437,7 @@ function Toolbar({
         </div>
       </div>
 
-      {showFill && !data.locked && <FillPanel data={data} onDone={() => setShowFill(false)} />}
+      {showFill && !data.locked && <FillPanel data={data} onDone={() => setShowFill(false)} viewingUserId={viewingUserId} />}
 
       {canSubmit && hasMismatch && (
         <div className="flex items-start gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
@@ -406,7 +467,7 @@ function Toolbar({
   );
 }
 
-function FillPanel({ data, onDone }: { data: MonthData; onDone: () => void }) {
+function FillPanel({ data, onDone, viewingUserId }: { data: MonthData; onDone: () => void; viewingUserId: string }) {
   const { t, locale } = useLocale();
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("18:00");
@@ -420,7 +481,7 @@ function FillPanel({ data, onDone }: { data: MonthData; onDone: () => void }) {
       const [h, m] = s.split(":").map(Number);
       return h * 60 + m;
     };
-    const res = await fillWorkdaysAction(data.year, data.month, toMin(start), toMin(end), brk);
+    const res = await fillWorkdaysAction(data.year, data.month, toMin(start), toMin(end), brk, viewingUserId);
     setBusy(false);
     setMsg(res.ok ? (locale === "ja" ? `${res.filled ?? 0}日分を入力しました。` : `Filled ${res.filled ?? 0} days.`) : res.error ?? (locale === "ja" ? "エラー" : "Error"));
     if (res.ok) setTimeout(onDone, 1200);
