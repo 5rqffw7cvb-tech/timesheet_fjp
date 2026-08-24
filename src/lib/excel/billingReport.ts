@@ -1,14 +1,34 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import type { OverviewRow, PeriodOverview } from "@/lib/adminData";
 import { calcBillingByProjects } from "@/lib/billing";
 import { currencySymbol, type BillingCurrency } from "@/lib/currency";
 
-export function buildBillingWorkbook(year: number, month: number, rows: OverviewRow[]) {
+/**
+ * File này dùng exceljs (không phải "xlsx") vì cần tô màu/border/freeze pane
+ * thật sự cho một bảng tính TẠO MỚI — bản "xlsx" (SheetJS) miễn phí ghi được
+ * number format nhưng bỏ qua toàn bộ style khi ghi file mới (đã test thực tế
+ * bằng cách unzip file xuất ra: font/fill không được lưu). 週報 vẫn dùng
+ * XlsxTemplate riêng vì đó là patch trực tiếp lên template có sẵn.
+ */
+
+const HEADER_FILL = "FF1E293B";  // slate-800
+const HEADER_FONT = "FFFFFFFF";
+const SUBTOTAL_FILL = "FFE2E8F0"; // slate-200
+const TOTAL_FILL = "FFCBD5E1";    // slate-300
+const BORDER_COLOR = "FFCBD5E1";
+const POSITIVE_COLOR = "FF15803D"; // emerald-700
+const NEGATIVE_COLOR = "FFB91C1C"; // rose-700
+const NOTE_COLOR = "FF64748B";     // slate-500
+
+const thinBorder = { style: "thin" as const, color: { argb: BORDER_COLOR } };
+const allBorders = { top: thinBorder, left: thinBorder, bottom: thinBorder, right: thinBorder };
+
+export async function buildBillingWorkbook(year: number, month: number, rows: OverviewRow[]) {
   const title = `${year}/${String(month).padStart(2, "0")} Customer Billing`;
   return buildWorkbookCore(title, [{ period: { year, month }, rows }], "JPY");
 }
 
-export function buildBillingWorkbookWithLabel(
+export async function buildBillingWorkbookWithLabel(
   periodLabel: string,
   periodsData: PeriodOverview[],
   currency: BillingCurrency,
@@ -28,20 +48,12 @@ function periodLabel(p: { year: number; month: number }) {
  * tế từng tháng. Xuất theo từng dòng/tháng để khách hàng so sánh trực tiếp
  * với file estimation của họ (cũng ghi theo từng tháng).
  */
-function buildWorkbookCore(title: string, periodsData: PeriodOverview[], currency: BillingCurrency) {
-  const wb = XLSX.utils.book_new();
+async function buildWorkbookCore(title: string, periodsData: PeriodOverview[], currency: BillingCurrency) {
   const moneyUnit = currencySymbol(currency);
   const isMulti = periodsData.length > 1;
-
-  const summary: any[][] = [
-    [title],
-    ["Rule", "< 140h * factor: deduct", "> 180h * factor: charge", "140h~180h: no adjustment"],
-    ["Note", `If unit price (${moneyUnit}/MM) = 0, adjustment amount will be 0. Each month is calculated separately using that month's own factor, then summed per member — compare directly against the customer's month-by-month estimation file.`],
-    [],
-    ["No", "Month", "Member", "Factor", `Unit Price (${moneyUnit}/MM)`, "Actual Hours", "Lower Bound", "Upper Bound", "Shortage Hours", "Overtime Hours", "Adjustment Hours", "Adjustment MM", `Adjustment Amount (${moneyUnit})`, "Status"],
-  ];
-
-  const startRow = 6;
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Timesheet";
+  wb.created = new Date();
 
   interface Line { month: string; row: OverviewRow; calc: ReturnType<typeof calcBillingByProjects> }
   const byMember = new Map<string, { fullName: string; lines: Line[] }>();
@@ -59,37 +71,93 @@ function buildWorkbookCore(title: string, periodsData: PeriodOverview[], currenc
       byMember.get(row.userId)!.lines.push({ month: periodLabel(period), row, calc });
     }
   }
-
   const members = [...byMember.values()].sort((a, b) => a.fullName.localeCompare(b.fullName));
 
+  /* ─────────────────────────── Sheet 1: 稼働情報 ─────────────────────────── */
+
+  const ws = wb.addWorksheet("稼働情報", { views: [{ state: "frozen", ySplit: 5 }] });
+  const cols = [
+    { key: "no", width: 6 },
+    { key: "month", width: 10 },
+    { key: "member", width: 24 },
+    { key: "factor", width: 9 },
+    { key: "unitPrice", width: 14 },
+    { key: "actual", width: 11 },
+    { key: "lower", width: 11 },
+    { key: "upper", width: 11 },
+    { key: "shortage", width: 11 },
+    { key: "overtime", width: 11 },
+    { key: "adjustHours", width: 12 },
+    { key: "adjustMm", width: 11 },
+    { key: "adjustAmount", width: 16 },
+    { key: "status", width: 12 },
+  ];
+  ws.columns = cols;
+  const colCount = cols.length;
+
+  ws.mergeCells(1, 1, 1, colCount);
+  const titleCell = ws.getCell(1, 1);
+  titleCell.value = title;
+  titleCell.font = { bold: true, size: 14 };
+  ws.getRow(1).height = 22;
+
+  ws.mergeCells(2, 1, 2, colCount);
+  ws.getCell(2, 1).value = "Rule: < 140h × factor → deduct  /  > 180h × factor → charge  /  140h〜180h → no adjustment";
+  ws.getCell(2, 1).font = { italic: true, color: { argb: NOTE_COLOR } };
+
+  ws.mergeCells(3, 1, 3, colCount);
+  ws.getCell(3, 1).value = `Note: if unit price (${moneyUnit}/MM) = 0, adjustment amount = 0. Each month is calculated separately using that month's own factor, then summed per member — compare directly against the customer's month-by-month estimation file.`;
+  ws.getCell(3, 1).font = { italic: true, color: { argb: NOTE_COLOR }, size: 10 };
+  ws.getRow(3).height = 26;
+  ws.getCell(3, 1).alignment = { wrapText: true, vertical: "top" };
+
+  const headerRow = ws.getRow(5);
+  headerRow.values = [
+    "No", "Month", "Member", "Factor", `Unit Price (${moneyUnit}/MM)`, "Actual Hours",
+    "Lower Bound", "Upper Bound", "Shortage Hours", "Overtime Hours",
+    "Adjustment Hours", "Adjustment MM", `Adjustment Amount (${moneyUnit})`, "Status",
+  ];
+  styleHeaderRow(headerRow, colCount);
+  ws.autoFilter = { from: { row: 5, column: 1 }, to: { row: 5, column: colCount } };
+
+  const hourFmt = '0.00"h"';
+  const moneyFmt = `#,##0"${moneyUnit}"`;
+
   let no = 1;
-  let rowCursor = startRow;
+  let rowIdx = 6;
   let sumActual = 0, sumShortage = 0, sumOvertime = 0, sumAdjustHours = 0, sumAdjustMm = 0, sumAmount = 0;
   let countUnder = 0, countOver = 0, countMissingPrice = 0;
 
   for (const member of members) {
     member.lines.sort((a, b) => a.month.localeCompare(b.month));
-    const subtotalStart = rowCursor;
+    const groupStart = rowIdx;
 
     for (const line of member.lines) {
       const { row, calc, month } = line;
-      const excelRow = rowCursor;
-      summary.push([
-        no++,
-        month,
-        row.fullName,
-        row.billingFactor,
-        calc.weightedUnitPrice,
-        row.usedHours,
-        formulaNumber(`140*D${excelRow}`, calc.lowerHours),
-        formulaNumber(`180*D${excelRow}`, calc.upperHours),
-        formulaNumber(`MAX(0,G${excelRow}-F${excelRow})`, calc.shortageHours),
-        formulaNumber(`MAX(0,F${excelRow}-H${excelRow})`, calc.overtimeHours),
-        formulaNumber(`J${excelRow}-I${excelRow}`, calc.adjustmentHours),
-        formulaNumber(`K${excelRow}/180`, calc.adjustmentMm),
-        formulaNumber(`L${excelRow}*E${excelRow}`, calc.adjustmentAmount),
-        row.status,
-      ]);
+      const r = ws.getRow(rowIdx);
+      r.getCell(1).value = no++;
+      r.getCell(2).value = month;
+      r.getCell(3).value = row.fullName;
+      r.getCell(4).value = row.billingFactor;
+      r.getCell(5).value = calc.weightedUnitPrice;
+      r.getCell(6).value = row.usedHours;
+      r.getCell(7).value = { formula: `140*D${rowIdx}`, result: calc.lowerHours };
+      r.getCell(8).value = { formula: `180*D${rowIdx}`, result: calc.upperHours };
+      r.getCell(9).value = { formula: `MAX(0,G${rowIdx}-F${rowIdx})`, result: calc.shortageHours };
+      r.getCell(10).value = { formula: `MAX(0,F${rowIdx}-H${rowIdx})`, result: calc.overtimeHours };
+      r.getCell(11).value = { formula: `J${rowIdx}-I${rowIdx}`, result: calc.adjustmentHours };
+      r.getCell(12).value = { formula: `K${rowIdx}/180`, result: calc.adjustmentMm };
+      r.getCell(13).value = { formula: `L${rowIdx}*E${rowIdx}`, result: calc.adjustmentAmount };
+      r.getCell(14).value = row.status;
+
+      r.getCell(4).numFmt = "0.00";
+      r.getCell(5).numFmt = moneyFmt;
+      for (const c of [6, 7, 8, 9, 10, 11]) r.getCell(c).numFmt = hourFmt;
+      r.getCell(12).numFmt = "0.0000";
+      r.getCell(13).numFmt = moneyFmt;
+      r.getCell(13).font = { color: { argb: calc.adjustmentAmount < 0 ? NEGATIVE_COLOR : calc.adjustmentAmount > 0 ? POSITIVE_COLOR : undefined }, bold: calc.adjustmentAmount !== 0 };
+      applyRowBorder(r, colCount);
+
       sumActual += row.usedHours;
       sumShortage += calc.shortageHours;
       sumOvertime += calc.overtimeHours;
@@ -99,97 +167,134 @@ function buildWorkbookCore(title: string, periodsData: PeriodOverview[], currenc
       if (calc.band === "UNDER") countUnder++;
       else if (calc.band === "OVER") countOver++;
       if (calc.weightedUnitPrice <= 0) countMissingPrice++;
-      rowCursor++;
+      rowIdx++;
     }
 
     if (isMulti && member.lines.length > 1) {
-      const subtotalEnd = rowCursor - 1;
-      summary.push([
-        "",
-        `${member.fullName} — subtotal`,
-        "", "", "",
-        formulaNumber(`SUM(F${subtotalStart}:F${subtotalEnd})`, round2(member.lines.reduce((s, l) => s + l.row.usedHours, 0))),
-        "", "",
-        formulaNumber(`SUM(I${subtotalStart}:I${subtotalEnd})`, round2(member.lines.reduce((s, l) => s + l.calc.shortageHours, 0))),
-        formulaNumber(`SUM(J${subtotalStart}:J${subtotalEnd})`, round2(member.lines.reduce((s, l) => s + l.calc.overtimeHours, 0))),
-        formulaNumber(`SUM(K${subtotalStart}:K${subtotalEnd})`, round2(member.lines.reduce((s, l) => s + l.calc.adjustmentHours, 0))),
-        formulaNumber(`SUM(L${subtotalStart}:L${subtotalEnd})`, round4(member.lines.reduce((s, l) => s + l.calc.adjustmentMm, 0))),
-        formulaNumber(`SUM(M${subtotalStart}:M${subtotalEnd})`, round0(member.lines.reduce((s, l) => s + l.calc.adjustmentAmount, 0))),
-        "",
-      ]);
-      rowCursor++;
-    }
-  }
-
-  // Subtotal rows nằm xen giữa nên không cộng bằng 1 formula SUM liên tục
-  // được — ghi số tĩnh đã tính từ đúng các dòng theo tháng (không tính lại
-  // subtotal) để tránh đếm trùng.
-  summary.push([
-    "TOTAL", "", "", "", "",
-    round2(sumActual), "", "",
-    round2(sumShortage),
-    round2(sumOvertime),
-    round2(sumAdjustHours),
-    round4(sumAdjustMm),
-    round0(sumAmount),
-    "",
-  ]);
-
-  const ws1 = XLSX.utils.aoa_to_sheet(summary);
-  ws1["!cols"] = [
-    { wch: 6 }, { wch: 10 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 12 },
-    { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 15 }, { wch: 12 }, { wch: 18 }, { wch: 12 },
-  ];
-
-  XLSX.utils.book_append_sheet(wb, ws1, "稼働情報");
-
-  const detail: any[][] = [[
-    "No", "Month", "Member", "Project Code", "Project Name", "Budget Hours", "Used Hours", "Diff (Used-Budget)",
-  ]];
-
-  let idx = 1;
-  for (const { period, rows } of periodsData) {
-    for (const row of rows) {
-      for (const p of row.byProject) {
-        const excelRow = detail.length + 1;
-        const diff = round2(p.used - p.budget);
-        detail.push([
-          idx++,
-          periodLabel(period),
-          row.fullName,
-          p.code,
-          p.name,
-          p.budget,
-          p.used,
-          formulaNumber(`G${excelRow}-F${excelRow}`, diff),
-        ]);
+      const groupEnd = rowIdx - 1;
+      const r = ws.getRow(rowIdx);
+      r.getCell(2).value = `${member.fullName} — subtotal`;
+      r.getCell(6).value = { formula: `SUM(F${groupStart}:F${groupEnd})`, result: round2(member.lines.reduce((s, l) => s + l.row.usedHours, 0)) };
+      r.getCell(9).value = { formula: `SUM(I${groupStart}:I${groupEnd})`, result: round2(member.lines.reduce((s, l) => s + l.calc.shortageHours, 0)) };
+      r.getCell(10).value = { formula: `SUM(J${groupStart}:J${groupEnd})`, result: round2(member.lines.reduce((s, l) => s + l.calc.overtimeHours, 0)) };
+      r.getCell(11).value = { formula: `SUM(K${groupStart}:K${groupEnd})`, result: round2(member.lines.reduce((s, l) => s + l.calc.adjustmentHours, 0)) };
+      r.getCell(12).value = { formula: `SUM(L${groupStart}:L${groupEnd})`, result: round4(member.lines.reduce((s, l) => s + l.calc.adjustmentMm, 0)) };
+      r.getCell(13).value = { formula: `SUM(M${groupStart}:M${groupEnd})`, result: round0(member.lines.reduce((s, l) => s + l.calc.adjustmentAmount, 0)) };
+      r.getCell(6).numFmt = hourFmt;
+      for (const c of [9, 10, 11]) r.getCell(c).numFmt = hourFmt;
+      r.getCell(12).numFmt = "0.0000";
+      r.getCell(13).numFmt = moneyFmt;
+      for (let c = 1; c <= colCount; c++) {
+        r.getCell(c).font = { bold: true };
+        r.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: SUBTOTAL_FILL } };
       }
+      applyRowBorder(r, colCount);
+      rowIdx++;
     }
   }
 
-  if (detail.length === 1) {
-    detail.push(["", "", "", "", "No project data", "", "", ""]);
+  // Subtotal xen giữa các dòng nên không cộng bằng 1 formula SUM liên tục
+  // được — ghi số tĩnh đã cộng từ đúng các dòng theo tháng (không tính lại
+  // subtotal) để tránh đếm trùng.
+  const totalRow = ws.getRow(rowIdx);
+  totalRow.getCell(1).value = "TOTAL";
+  totalRow.getCell(6).value = round2(sumActual);
+  totalRow.getCell(9).value = round2(sumShortage);
+  totalRow.getCell(10).value = round2(sumOvertime);
+  totalRow.getCell(11).value = round2(sumAdjustHours);
+  totalRow.getCell(12).value = round4(sumAdjustMm);
+  totalRow.getCell(13).value = round0(sumAmount);
+  totalRow.getCell(6).numFmt = hourFmt;
+  for (const c of [9, 10, 11]) totalRow.getCell(c).numFmt = hourFmt;
+  totalRow.getCell(12).numFmt = "0.0000";
+  totalRow.getCell(13).numFmt = moneyFmt;
+  for (let c = 1; c <= colCount; c++) {
+    totalRow.getCell(c).font = { bold: true };
+    totalRow.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: TOTAL_FILL } };
+    totalRow.getCell(c).border = { ...allBorders, top: { style: "double", color: { argb: BORDER_COLOR } } };
   }
 
-  const ws2 = XLSX.utils.aoa_to_sheet(detail);
-  ws2["!cols"] = [
-    { wch: 6 }, { wch: 10 }, { wch: 24 }, { wch: 14 }, { wch: 32 }, { wch: 12 }, { wch: 12 }, { wch: 16 },
-  ];
-
-  XLSX.utils.book_append_sheet(wb, ws2, "契約工数");
-
-  XLSX.utils.sheet_add_aoa(ws1, [
+  // Bảng thống kê nhỏ bên phải
+  const statCol = colCount + 2;
+  const stats: [string, number][] = [
     ["Members under lower bound", countUnder],
     ["Members over upper bound", countOver],
     ["Members with unit price = 0", countMissingPrice],
     ["Total adjustment amount", round0(sumAmount)],
-  ], { origin: "O4" });
+  ];
+  stats.forEach(([label, value], i) => {
+    const r = 2 + i;
+    ws.getCell(r, statCol).value = label;
+    ws.getCell(r, statCol).font = { bold: true, size: 10 };
+    ws.getCell(r, statCol + 1).value = value;
+    if (label === "Total adjustment amount") ws.getCell(r, statCol + 1).numFmt = moneyFmt;
+  });
+  ws.getColumn(statCol).width = 28;
+  ws.getColumn(statCol + 1).width = 14;
 
-  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Uint8Array;
+  /* ─────────────────────────── Sheet 2: 契約工数 ─────────────────────────── */
+
+  const ws2 = wb.addWorksheet("契約工数", { views: [{ state: "frozen", ySplit: 1 }] });
+  ws2.columns = [
+    { key: "no", width: 6 },
+    { key: "month", width: 10 },
+    { key: "member", width: 24 },
+    { key: "code", width: 14 },
+    { key: "name", width: 32 },
+    { key: "budget", width: 12 },
+    { key: "used", width: 12 },
+    { key: "diff", width: 14 },
+  ];
+  const headerRow2 = ws2.getRow(1);
+  headerRow2.values = ["No", "Month", "Member", "Project Code", "Project Name", "Budget Hours", "Used Hours", "Diff (Used-Budget)"];
+  styleHeaderRow(headerRow2, 8);
+  ws2.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: 8 } };
+
+  let idx = 1;
+  let dRow = 2;
+  for (const { period, rows } of periodsData) {
+    for (const row of rows) {
+      for (const p of row.byProject) {
+        const r = ws2.getRow(dRow);
+        const diff = round2(p.used - p.budget);
+        r.getCell(1).value = idx++;
+        r.getCell(2).value = periodLabel(period);
+        r.getCell(3).value = row.fullName;
+        r.getCell(4).value = p.code;
+        r.getCell(5).value = p.name;
+        r.getCell(6).value = p.budget;
+        r.getCell(7).value = p.used;
+        r.getCell(8).value = { formula: `G${dRow}-F${dRow}`, result: diff };
+        r.getCell(6).numFmt = hourFmt;
+        r.getCell(7).numFmt = hourFmt;
+        r.getCell(8).numFmt = hourFmt;
+        r.getCell(8).font = { color: { argb: diff < 0 ? NEGATIVE_COLOR : diff > 0 ? POSITIVE_COLOR : undefined } };
+        applyRowBorder(r, 8);
+        dRow++;
+      }
+    }
+  }
+  if (dRow === 2) {
+    ws2.getCell(2, 5).value = "No project data";
+  }
+
+  const buffer = await wb.xlsx.writeBuffer();
+  return new Uint8Array(buffer);
 }
 
-function formulaNumber(formula: string, value: number) {
-  return { t: "n", f: formula, v: value };
+function styleHeaderRow(row: ExcelJS.Row, colCount: number) {
+  row.height = 20;
+  for (let c = 1; c <= colCount; c++) {
+    const cell = row.getCell(c);
+    cell.font = { bold: true, color: { argb: HEADER_FONT } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_FILL } };
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    cell.border = allBorders;
+  }
+}
+
+function applyRowBorder(row: ExcelJS.Row, colCount: number) {
+  for (let c = 1; c <= colCount; c++) row.getCell(c).border = allBorders;
 }
 
 function round0(n: number) {

@@ -63,7 +63,7 @@ export async function GET(req: Request) {
 
     const [org] = await db.select().from(orgSettings).limit(1);
     const currency = normalizeBillingCurrency(org?.billingCurrency);
-    const buffer = buildBillingWorkbookWithLabel(label, periodsData, currency);
+    const buffer = await buildBillingWorkbookWithLabel(label, periodsData, currency);
     const fileName = billingFileName(first.year, first.month).replace(
       `${first.year}年${String(first.month).padStart(2, "0")}月`,
       label,
