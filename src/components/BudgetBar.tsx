@@ -1,3 +1,5 @@
+"use client";
+
 import { useLocale } from "./LocaleProvider";
 
 export default function BudgetBar({
