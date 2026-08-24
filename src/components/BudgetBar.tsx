@@ -1,6 +1,9 @@
+import { useLocale } from "./LocaleProvider";
+
 export default function BudgetBar({
   used, budget, compact = false,
 }: { used: number; budget: number; compact?: boolean }) {
+  const { locale } = useLocale();
   const pct = budget > 0 ? (used / budget) * 100 : used > 0 ? 100 : 0;
   const over = budget > 0 && used > budget;
   const near = !over && pct >= 90;

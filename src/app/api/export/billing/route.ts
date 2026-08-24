@@ -55,7 +55,7 @@ export async function GET(req: Request) {
       return NextResponse.json(
         { error: scope === "all" ? "No members have data." : "No members have been approved." },
         { status: 404 },
-        { error: scope === "all" ? "No members have data." : "No members have been approved." },
+      );
     }
 
     const sorted = [...periods].sort((a, b) => (a.year - b.year) || (a.month - b.month));
