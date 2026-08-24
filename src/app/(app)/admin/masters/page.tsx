@@ -17,6 +17,8 @@ export default async function MastersPage() {
       projects={projectRows.map((p) => ({
         id: p.id, systemCode: p.systemCode, systemName: p.systemName,
         code: p.code, name: p.name, isActive: p.isActive,
+        clientCompany: p.clientCompany, orgUnit: p.orgUnit,
+        workplace: p.workplace, workName: p.workName,
       }))}
       workTypes={workTypeRows.map((w) => ({
         id: w.id, code: w.code, name: w.name,

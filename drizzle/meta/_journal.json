@@ -36,6 +36,13 @@
       "when": 1788224400000,
       "tag": "0004_org_billing_currency",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787575618531,
+      "tag": "0005_project_workplace_fields",
+      "breakpoints": true
     }
   ]
 }

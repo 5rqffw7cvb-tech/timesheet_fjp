@@ -39,13 +39,7 @@ export default async function SettingsPage({
       .orderBy(asc(holidays.date)),
   ]);
 
-  const org = orgRows[0] ?? {
-    clientCompany: "横河ソリューションサービス株式会社",
-    orgUnit: "SI　開発部",
-    workplace: "〒105-0011東京都港区芝公園1丁目7-6",
-    workName: "YOKO Portal 開発",
-    billingCurrency: "JPY",
-  };
+  const org = orgRows[0] ?? { billingCurrency: "JPY" };
 
   return (
     <SettingsPanel
@@ -53,11 +47,7 @@ export default async function SettingsPage({
       workingDays={settingRows[0]?.workingDays ?? defaultWorkingDays(year, month)}
       suggestedWorkingDays={defaultWorkingDays(year, month)}
       daysInMonth={daysInMonth(year, month)}
-      org={{
-        clientCompany: org.clientCompany, orgUnit: org.orgUnit,
-        workplace: org.workplace, workName: org.workName,
-        billingCurrency: normalizeBillingCurrency(org.billingCurrency),
-      }}
+      billingCurrency={normalizeBillingCurrency(org.billingCurrency)}
       holidays={holidayRows.map((h) => ({ id: h.id, date: h.date, name: h.name }))}
     />
   );

@@ -29,9 +29,29 @@ export interface ExportOutcome {
   totalHours: number;
 }
 
+export interface ExportProjectOption {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export type BuildMemberReportResult =
+  | { ok: true; outcome: ExportOutcome }
+  | { ok: false; needsProjectSelection: true; projects: ExportProjectOption[] }
+  | { ok: false; needsProjectSelection?: false; error: string };
+
+/**
+ * Member có thể làm nhiều project trong tháng, nhưng 会社名/組織単位/就業場所/
+ * 就業した業務 in trên 勤務報告書 lại khác nhau theo từng project (xem
+ * `projects` table). Vì vậy file xuất ra luôn ứng với đúng 1 project:
+ * - Nếu member chỉ có 1 project trong tháng -> tự động dùng project đó.
+ * - Nếu có nhiều project mà không truyền `projectId` -> trả về danh sách để
+ *   caller hỏi lại người dùng (popup chọn project), 作業明細 sẽ được lọc
+ *   theo project đã chọn.
+ */
 export async function buildMemberReport(
-  userId: string, year: number, month: number,
-): Promise<ExportOutcome> {
+  userId: string, year: number, month: number, projectId?: string,
+): Promise<BuildMemberReportResult> {
   const first = ymd(year, month, 1);
   const last = ymd(year, month, daysInMonth(year, month));
 
@@ -61,8 +81,32 @@ export async function buildMemberReport(
     ]);
 
   const row = userRows[0];
-  if (!row) throw new Error("Member not found.");
+  if (!row) return { ok: false, error: "Member not found." };
   const user = row.u;
+  const projectById = new Map(projectRows.map((p) => [p.id, p]));
+
+  /* ── xác định project sẽ xuất ── */
+  const distinctProjectIds = [...new Set(entryRows.map((r) => r.e.projectId))];
+  let effectiveProjectId = projectId;
+  if (!effectiveProjectId) {
+    if (distinctProjectIds.length > 1) {
+      return {
+        ok: false,
+        needsProjectSelection: true,
+        projects: distinctProjectIds
+          .map((id) => projectById.get(id))
+          .filter((p): p is NonNullable<typeof p> => !!p)
+          .map((p) => ({ id: p.id, code: p.code, name: p.name }))
+          .sort((a, b) => a.code.localeCompare(b.code)),
+      };
+    }
+    effectiveProjectId = distinctProjectIds[0];
+  }
+  const isMultiProject = distinctProjectIds.length > 1;
+  const scopedEntryRows = effectiveProjectId
+    ? entryRows.filter((r) => r.e.projectId === effectiveProjectId)
+    : entryRows;
+  const project = effectiveProjectId ? projectById.get(effectiveProjectId) : undefined;
 
   /* ── ngày ── */
   const days: ExportDay[] = logRows.map((l) => ({
@@ -89,7 +133,7 @@ export async function buildMemberReport(
   let totalHours = 0;
   let order = 0;
 
-  for (const { e, projectCode, workTypeName } of entryRows) {
+  for (const { e, projectCode, workTypeName } of scopedEntryRows) {
     const day = parseYmd(e.date).day;
     const pos = day - 1 + offset;
     const week = Math.floor(pos / 7) + 1;
@@ -157,6 +201,10 @@ export async function buildMemberReport(
     projectCodes: [...usedProjectCodes],
     publicHolidays: [...new Set(publicHolidays)],
     leaves, remarks,
+    clientCompany: project?.clientCompany ?? "",
+    orgUnit: project?.orgUnit ?? "",
+    workplace: project?.workplace ?? "",
+    workName: project?.workName ?? "",
     masterProjects: projectRows.map((p) => ({
       systemCode: p.systemCode, systemName: p.systemName, code: p.code, name: p.name,
     })),
@@ -169,14 +217,18 @@ export async function buildMemberReport(
   const { buffer, warnings } = buildWeeklyReport(template, data);
 
   return {
-    fileName: reportFileName(
-      data.companyName,
-      user.displayName || user.username,
-      year, month,
-    ),
-    buffer,
-    warnings,
-    totalHours: round2(totalHours),
+    ok: true,
+    outcome: {
+      fileName: reportFileName(
+        data.companyName,
+        user.displayName || user.username,
+        year, month,
+        isMultiProject ? project?.code : undefined,
+      ),
+      buffer,
+      warnings,
+      totalHours: round2(totalHours),
+    },
   };
 }
 

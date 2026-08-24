@@ -236,6 +236,10 @@ export async function loadMasters(userId?: string) {
         endDate: projects.endDate,
         isActive: projects.isActive,
         sortOrder: projects.sortOrder,
+        clientCompany: projects.clientCompany,
+        orgUnit: projects.orgUnit,
+        workplace: projects.workplace,
+        workName: projects.workName,
         createdAt: projects.createdAt,
       })
         .from(projectAssignments)

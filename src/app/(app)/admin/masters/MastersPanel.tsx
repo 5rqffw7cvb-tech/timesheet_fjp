@@ -6,7 +6,10 @@ import { upsertProjectAction, upsertWorkTypeAction } from "@/actions/admin";
 import { useLocale } from "@/components/LocaleProvider";
 import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableUi";
 
-interface P { id: string; systemCode: string; systemName: string; code: string; name: string; isActive: boolean }
+interface P {
+  id: string; systemCode: string; systemName: string; code: string; name: string; isActive: boolean;
+  clientCompany: string; orgUnit: string; workplace: string; workName: string;
+}
 interface W { id: string; code: string; name: string; category: string; note: string; isActive: boolean }
 
 export default function MastersPanel({ projects, workTypes }: { projects: P[]; workTypes: W[] }) {
@@ -38,7 +41,11 @@ function ProjectTable({ rows, onMsg }: { rows: P[]; onMsg: (m: string) => void }
   const [busy, startTransition] = useTransition();
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<SortState>({ key: "code", dir: "asc" });
-  const blank: P = { id: "", systemCode: "", systemName: "", code: "", name: "", isActive: true };
+  const blank: P = {
+    id: "", systemCode: "", systemName: "", code: "", name: "", isActive: true,
+    clientCompany: "横河ソリューションサービス株式会社", orgUnit: "SI　開発部",
+    workplace: "〒105-0011東京都港区芝公園1丁目7-6", workName: "YOKO Portal 開発",
+  };
   const [form, setForm] = useState<P>(blank);
   const { t, locale } = useLocale();
 
@@ -64,6 +71,8 @@ function ProjectTable({ rows, onMsg }: { rows: P[]; onMsg: (m: string) => void }
       const res = await upsertProjectAction(edit === "new" ? null : form.id, {
         systemCode: form.systemCode, systemName: form.systemName,
         code: form.code, name: form.name, isActive: form.isActive,
+        clientCompany: form.clientCompany, orgUnit: form.orgUnit,
+        workplace: form.workplace, workName: form.workName,
       });
       onMsg(res.ok ? res.message ?? (locale === "ja" ? "保存しました。" : "Saved.") : res.error ?? (locale === "ja" ? "エラー" : "Error"));
       if (res.ok) { setEdit(null); router.refresh(); }
@@ -134,6 +143,21 @@ function ProjectTable({ rows, onMsg }: { rows: P[]; onMsg: (m: string) => void }
                 <option value="1">{t("active")}</option><option value="0">{t("hidden")}</option>
               </select>
             </F>
+          </div>
+          <div className="border-t border-slate-200 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {locale === "ja" ? "勤務報告書に印字する情報（プロジェクトごとに異なる）" : "Printed on the report (varies per project)"}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <F l="会社名"><input className="input" value={form.clientCompany}
+                onChange={(e) => setForm({ ...form, clientCompany: e.target.value })} /></F>
+              <F l="組織単位"><input className="input" value={form.orgUnit}
+                onChange={(e) => setForm({ ...form, orgUnit: e.target.value })} /></F>
+              <F l="就業場所"><input className="input" value={form.workplace}
+                onChange={(e) => setForm({ ...form, workplace: e.target.value })} /></F>
+              <F l="就業した業務"><input className="input" value={form.workName}
+                onChange={(e) => setForm({ ...form, workName: e.target.value })} /></F>
+            </div>
           </div>
           <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
             <button className="btn-secondary" onClick={() => setEdit(null)}>{t("cancel")}</button>

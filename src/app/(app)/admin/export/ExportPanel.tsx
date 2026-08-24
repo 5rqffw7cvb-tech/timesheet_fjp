@@ -9,6 +9,7 @@ import { calcBillingByProjects } from "@/lib/billing";
 import { currencySymbol, type BillingCurrency } from "@/lib/currency";
 import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableUi";
 import { useLocale } from "@/components/LocaleProvider";
+import ProjectPickerModal, { type ProjectOption } from "@/components/ProjectPickerModal";
 
 export default function ExportPanel({
   year, month, rows, workingDays, selectedPeriods, selectedProjectIds, projects, billingCurrency,
@@ -34,6 +35,7 @@ export default function ExportPanel({
   const [q, setQ] = useState("");
   const [billingSort, setBillingSort] = useState<SortState>({ key: "fullName", dir: "asc" });
   const [fileSort, setFileSort] = useState<SortState>({ key: "fullName", dir: "asc" });
+  const [projectPickerFor, setProjectPickerFor] = useState<{ userId: string; projects: ProjectOption[] } | null>(null);
 
   const approved = rows.filter((r) => r.status === "APPROVED");
   const withData = rows.filter((r) => r.usedHours > 0 || r.attendanceHours > 0);
@@ -88,13 +90,17 @@ export default function ExportPanel({
   const extendedMonthChoices = monthChoices.slice(6);
   const isWeeklyCompatible = months.length === 1 && !projectId;
 
-  async function download(url: string, key: string) {
+  async function download(url: string, key: string, onNeedsProject?: (projects: ProjectOption[]) => void) {
     setBusy(key);
     setMsg(null);
     try {
       const res = await fetch(url);
       if (!res.ok) {
         const j = await res.json().catch(() => ({ error: locale === "ja" ? "不明なエラー" : "Unknown error" }));
+        if (res.status === 409 && j.needsProjectSelection && onNeedsProject) {
+          onNeedsProject(j.projects);
+          return;
+        }
         setMsg(j.error ?? (locale === "ja" ? "ファイル出力に失敗しました" : "Export failed"));
         return;
       }
@@ -341,7 +347,11 @@ export default function ExportPanel({
                   <td><StatusBadge status={r.status} /></td>
                   <td className="text-right">
                     <button className="btn-secondary btn-sm" disabled={busy !== null || empty || !isWeeklyCompatible}
-                            onClick={() => download(`/api/export?year=${year}&month=${month}&user=${r.userId}`, r.userId)}>
+                            onClick={() => download(
+                              `/api/export?year=${year}&month=${month}&user=${r.userId}`,
+                              r.userId,
+                              (projects) => setProjectPickerFor({ userId: r.userId, projects }),
+                            )}>
                       {busy === r.userId ? "…" : t("downloadFile")}
                     </button>
                   </td>
@@ -372,6 +382,18 @@ export default function ExportPanel({
             : "Each weekly sheet holds at most 20 work rows. If a week has more than 20 project×工種 combinations, the app warns you on export."}</li>
         </ul>
       </div>
+
+      {projectPickerFor && (
+        <ProjectPickerModal
+          projects={projectPickerFor.projects}
+          onCancel={() => setProjectPickerFor(null)}
+          onSelect={(pid) => {
+            const userId = projectPickerFor.userId;
+            setProjectPickerFor(null);
+            void download(`/api/export?year=${year}&month=${month}&user=${userId}&project=${pid}`, userId);
+          }}
+        />
+      )}
     </div>
   );
 }

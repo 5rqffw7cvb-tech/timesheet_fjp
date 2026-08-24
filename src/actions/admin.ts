@@ -300,7 +300,10 @@ export async function syncMemberProjectAssignmentsAction(
 
 export async function upsertProjectAction(
   id: string | null,
-  data: { systemCode: string; systemName: string; code: string; name: string; isActive: boolean },
+  data: {
+    systemCode: string; systemName: string; code: string; name: string; isActive: boolean;
+    clientCompany: string; orgUnit: string; workplace: string; workName: string;
+  },
 ): Promise<ActionResult> {
   await requireAdmin();
   if (!data.code.trim() || !data.name.trim()) return fail("Project code or name is missing.");
@@ -369,17 +372,10 @@ export async function removeHolidayAction(id: string): Promise<ActionResult> {
 }
 
 export async function updateOrgSettingAction(data: {
-  clientCompany: string;
-  orgUnit: string;
-  workplace: string;
-  workName: string;
   billingCurrency: string;
 }): Promise<ActionResult> {
   await requireAdmin();
-  const payload = {
-    ...data,
-    billingCurrency: normalizeBillingCurrency(data.billingCurrency),
-  };
+  const payload = { billingCurrency: normalizeBillingCurrency(data.billingCurrency) };
   await db.insert(orgSettings).values({ id: "default", ...payload })
     .onConflictDoUpdate({ target: orgSettings.id, set: { ...payload, updatedAt: new Date() } });
   revalidatePath("/admin/settings");

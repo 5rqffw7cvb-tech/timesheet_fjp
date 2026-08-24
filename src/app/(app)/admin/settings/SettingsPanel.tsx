@@ -10,23 +10,17 @@ import { BILLING_CURRENCIES, currencySymbol, type BillingCurrency } from "@/lib/
 import { useLocale } from "@/components/LocaleProvider";
 
 export default function SettingsPanel({
-  year, month, workingDays, suggestedWorkingDays, daysInMonth, org, holidays,
+  year, month, workingDays, suggestedWorkingDays, daysInMonth, billingCurrency, holidays,
 }: {
   year: number; month: number;
   workingDays: number; suggestedWorkingDays: number; daysInMonth: number;
-  org: {
-    clientCompany: string;
-    orgUnit: string;
-    workplace: string;
-    workName: string;
-    billingCurrency: BillingCurrency;
-  };
+  billingCurrency: BillingCurrency;
   holidays: { id: string; date: string; name: string }[];
 }) {
   const router = useRouter();
   const { t, locale } = useLocale();
   const [wd, setWd] = useState(workingDays);
-  const [orgForm, setOrgForm] = useState(org);
+  const [currency, setCurrency] = useState(billingCurrency);
   const [hDate, setHDate] = useState(`${year}-${String(month).padStart(2, "0")}-01`);
   const [hName, setHName] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
@@ -89,22 +83,15 @@ export default function SettingsPanel({
 
         <div className="card">
           <div className="card-header">
-            <h2 className="card-title">{t("settingsOrgTitle")}</h2>
+            <h2 className="card-title">{t("settingsCurrencyTitle")}</h2>
+            <span className="text-xs text-slate-400">{t("settingsCurrencyNote")}</span>
           </div>
           <div className="grid gap-3 p-4">
-            <F l="会社名"><input className="input" value={orgForm.clientCompany}
-              onChange={(e) => setOrgForm({ ...orgForm, clientCompany: e.target.value })} /></F>
-            <F l="組織単位"><input className="input" value={orgForm.orgUnit}
-              onChange={(e) => setOrgForm({ ...orgForm, orgUnit: e.target.value })} /></F>
-            <F l="就業場所"><input className="input" value={orgForm.workplace}
-              onChange={(e) => setOrgForm({ ...orgForm, workplace: e.target.value })} /></F>
-            <F l="就業した業務"><input className="input" value={orgForm.workName}
-              onChange={(e) => setOrgForm({ ...orgForm, workName: e.target.value })} /></F>
             <F l={t("settingsCurrency")}>
               <select
                 className="select"
-                value={orgForm.billingCurrency}
-                onChange={(e) => setOrgForm({ ...orgForm, billingCurrency: e.target.value as BillingCurrency })}
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value as BillingCurrency)}
               >
                 {BILLING_CURRENCIES.map((c) => (
                   <option key={c} value={c}>{c} ({currencySymbol(c)})</option>
@@ -113,7 +100,7 @@ export default function SettingsPanel({
             </F>
             <div className="flex justify-end">
               <button className="btn-primary" disabled={busy}
-                      onClick={() => run(() => updateOrgSettingAction(orgForm))}>{t("save")}</button>
+                      onClick={() => run(() => updateOrgSettingAction({ billingCurrency: currency }))}>{t("save")}</button>
             </div>
           </div>
         </div>

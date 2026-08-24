@@ -82,20 +82,20 @@ async function main() {
   }
 
   console.log("→ PJ (%d)", master.projects.length);
+  // 会社名/就業した業務 không có trong master.json -> giữ default của schema.
+  // orgUnit/workplace chỉ áp cho project MỚI tạo (idempotent, không ghi đè
+  // giá trị admin đã sửa riêng cho từng project).
+  const orgUnit = master.orgUnits[1] ?? master.orgUnits[0] ?? "SI　開発部";
   for (const [i, p] of master.projects.entries()) {
-    await db.insert(projects).values({ ...p, sortOrder: i })
+    await db.insert(projects).values({ ...p, sortOrder: i, orgUnit, workplace: master.workplace })
       .onConflictDoUpdate({
         target: projects.code,
         set: { systemCode: p.systemCode, systemName: p.systemName, name: p.name },
       });
   }
 
-  console.log("→ Thông tin 就業先");
-  await db.insert(orgSettings).values({
-    id: "default",
-    orgUnit: master.orgUnits[1] ?? master.orgUnits[0] ?? "SI　開発部",
-    workplace: master.workplace,
-  }).onConflictDoNothing();
+  console.log("→ Cấu hình chung");
+  await db.insert(orgSettings).values({ id: "default" }).onConflictDoNothing();
 
   console.log("→ Tài khoản");
   const created: { username: string; fullName: string; role: string }[] = [];

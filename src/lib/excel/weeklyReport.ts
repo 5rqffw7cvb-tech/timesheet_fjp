@@ -77,6 +77,11 @@ export interface WeeklyReportData {
   memberName: string;       // 氏名    (C7)
   roleTitle: string;        // 役割    (D7)
   workingDays: number;      // 所定日数 (月間集計シート!X4)
+  /** Thông tin theo project — in tại 勤務報告書!F3〜F6. */
+  clientCompany: string;    // 会社名   (勤務報告書!F3)
+  orgUnit: string;          // 組織単位 (勤務報告書!F4)
+  workplace: string;        // 就業場所 (勤務報告書!F5)
+  workName: string;         // 就業した業務 (勤務報告書!F6)
   days: ExportDay[];
   weeks: ExportWeek[];
   projectCodes: string[];   // 月間集計シート!I4:I23
@@ -223,7 +228,14 @@ export function buildWeeklyReport(
   }
   wb.setMany("月間集計シート", agg);
 
-  /* 6. 勤務報告書 — 公休 / 休暇 / 備考 (dòng 9 = ngày 1) */
+  /* 6. 勤務報告書 — 就業先情報 (会社名/組織単位/就業場所/就業した業務) + 公休 / 休暇 / 備考 */
+  wb.setMany("勤務報告書", {
+    F3: data.clientCompany || null,
+    F4: data.orgUnit || null,
+    F5: data.workplace || null,
+    F6: data.workName || null,
+  });
+
   const report: Record<string, CellValue> = {};
   for (let day = 1; day <= 31; day++) {
     report[`U${8 + day}`] = null;
@@ -273,13 +285,19 @@ function numOrText(v: string): CellValue {
   return Number.isFinite(Number(v)) && v.trim() !== "" ? Number(v) : v;
 }
 
-/** 週報_FPTジャパン_ThienLN1_2026年07月.xlsx */
+/**
+ * 週報_FPTジャパン_ThienLN1_2026年07月.xlsx
+ * projectCode chỉ thêm khi member có nhiều project trong tháng, để phân biệt
+ * các file xuất riêng cho từng project.
+ */
 export function reportFileName(
   companyName: string,
   memberKey: string,
   year: number,
   month: number,
+  projectCode?: string,
 ): string {
   const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, "_").trim();
-  return `週報_${safe(companyName)}_${safe(memberKey)}_${year}年${String(month).padStart(2, "0")}月.xlsx`;
+  const suffix = projectCode ? `_${safe(projectCode)}` : "";
+  return `週報_${safe(companyName)}_${safe(memberKey)}_${year}年${String(month).padStart(2, "0")}月${suffix}.xlsx`;
 }

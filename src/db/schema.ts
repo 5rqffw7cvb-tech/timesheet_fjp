@@ -38,6 +38,11 @@ export const projects = pgTable(
     endDate: date("end_date"),
     isActive: boolean("is_active").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
+    /** In lên 勤務報告書!F3〜F6 — khác nhau theo từng project/khách hàng. */
+    clientCompany: text("client_company").notNull().default("横河ソリューションサービス株式会社"),
+    orgUnit: text("org_unit").notNull().default("SI　開発部"),
+    workplace: text("workplace").notNull().default("〒105-0011東京都港区芝公園1丁目7-6"),
+    workName: text("work_name").notNull().default("YOKO Portal 開発"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("projects_active_idx").on(t.isActive)],
@@ -229,13 +234,9 @@ export const holidays = pgTable("holidays", {
   type: text("type").notNull().default("公休"),
 });
 
-/** Thông tin cố định in trên 勤務報告書 */
+/** Cấu hình chung — 会社名/組織単位/就業場所/就業した業務 nay theo từng project, xem [[projects]]. */
 export const orgSettings = pgTable("org_settings", {
   id: text("id").primaryKey().default("default"),
-  clientCompany: text("client_company").notNull().default("横河ソリューションサービス株式会社"),
-  orgUnit: text("org_unit").notNull().default("SI　開発部"),
-  workplace: text("workplace").notNull().default("〒105-0011東京都港区芝公園1丁目7-6"),
-  workName: text("work_name").notNull().default("YOKO Portal 開発"),
   billingCurrency: text("billing_currency").notNull().default("JPY"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

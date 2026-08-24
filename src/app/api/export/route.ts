@@ -18,6 +18,7 @@ export async function GET(req: Request) {
   const year = Number(url.searchParams.get("year"));
   const month = Number(url.searchParams.get("month"));
   const userId = url.searchParams.get("user");
+  const projectId = url.searchParams.get("project") || undefined;
   const scope = url.searchParams.get("scope") ?? "approved";
 
   if (!year || !month || month < 1 || month > 12) {
@@ -34,12 +35,22 @@ export async function GET(req: Request) {
 
   try {
     if (userId) {
-      const out = await buildMemberReport(userId, year, month);
-      return new NextResponse(new Uint8Array(out.buffer), {
+      const result = await buildMemberReport(userId, year, month, projectId);
+      if (!result.ok) {
+        if (result.needsProjectSelection) {
+          return NextResponse.json(
+            { needsProjectSelection: true, projects: result.projects },
+            { status: 409 },
+          );
+        }
+        return NextResponse.json({ error: result.error }, { status: 404 });
+      }
+      const { outcome } = result;
+      return new NextResponse(new Uint8Array(outcome.buffer), {
         headers: {
           "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": contentDisposition(out.fileName),
-          "X-Export-Warnings": encodeURIComponent(JSON.stringify(out.warnings)),
+          "Content-Disposition": contentDisposition(outcome.fileName),
+          "X-Export-Warnings": encodeURIComponent(JSON.stringify(outcome.warnings)),
         },
       });
     }
@@ -56,10 +67,20 @@ export async function GET(req: Request) {
       );
     }
 
+    // Member có nhiều project trong tháng -> tách thành 1 file/project (đã hỏi
+    // trước qua popup ở export đơn lẻ; ở đây xuất hàng loạt nên tự tách hết).
     const files: Record<string, Uint8Array> = {};
     for (const t of targets) {
-      const out = await buildMemberReport(t.userId, year, month);
-      files[out.fileName] = out.buffer;
+      const first = await buildMemberReport(t.userId, year, month);
+      if (first.ok) {
+        files[first.outcome.fileName] = first.outcome.buffer;
+        continue;
+      }
+      if (!first.needsProjectSelection) continue;
+      for (const p of first.projects) {
+        const perProject = await buildMemberReport(t.userId, year, month, p.id);
+        if (perProject.ok) files[perProject.outcome.fileName] = perProject.outcome.buffer;
+      }
     }
     const zip = zipSync(files, { level: 6 });
     const zipName = `週報_${year}年${String(month).padStart(2, "0")}月.zip`;

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "drizzle-kit migrate && next start",
     "lint": "next lint",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
@@ -15,6 +15,7 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "date-holidays": "^3.35.0",
+    "drizzle-kit": "^0.31.10",
     "drizzle-orm": "^0.45.2",
     "fflate": "^0.8.2",
     "jose": "^5.10.0",
@@ -32,7 +33,6 @@
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
     "dotenv": "^17.4.2",
-    "drizzle-kit": "^0.31.10",
     "playwright": "^1.62.1",
     "server-only": "^0.0.1",
     "tailwindcss": "^4.0.0",
