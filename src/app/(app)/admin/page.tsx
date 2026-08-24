@@ -3,8 +3,6 @@ import { requireAdmin } from "@/lib/auth";
 import { monthOverview, monthWorkingDays } from "@/lib/adminData";
 import { todayParts } from "@/lib/dates";
 import MonthNav from "@/components/MonthNav";
-import StatusBadge from "@/components/StatusBadge";
-import BudgetBar from "@/components/BudgetBar";
 import { calcBillingByProjects } from "@/lib/billing";
 import AdminOverviewTable from "./AdminOverviewTable";
 import { getLocale } from "@/lib/requestLocale";
@@ -62,28 +60,6 @@ export default async function AdminDashboard({
       </div>
 
       <AdminOverviewTable rows={rows} year={year} month={month} />
-
-      <div className="card">
-        <div className="card-header"><h2 className="card-title">{getMessage(locale, "detailByProject")}</h2></div>
-        <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-3">
-          {rows.filter((r) => r.byProject.length > 0).map((r) => (
-            <div key={r.userId} className="rounded-md border border-slate-200 p-3">
-              <div className="mb-2 text-sm font-medium text-slate-700">{r.fullName}</div>
-              <div className="space-y-2">
-                {r.byProject.map((p) => (
-                  <div key={p.projectId}>
-                    <div className="flex justify-between text-xs text-slate-500">
-                      <span className="truncate">{p.name}</span>
-                      <span className="num shrink-0">{p.used.toFixed(1)}/{p.budget.toFixed(1)}h</span>
-                    </div>
-                    <BudgetBar used={p.used} budget={p.budget} compact />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
