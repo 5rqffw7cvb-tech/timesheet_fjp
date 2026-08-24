@@ -37,7 +37,7 @@ export function numToCol(n: number): string {
 
 export function splitRef(ref: string): { col: string; colNum: number; row: number } {
   const m = /^([A-Z]+)(\d+)$/.exec(ref);
-  if (!m) throw new Error(`Ô không hợp lệ: ${ref}`);
+  if (!m) throw new Error(`Invalid cell reference: ${ref}`);
   return { col: m[1], colNum: colToNum(m[1]), row: Number(m[2]) };
 }
 
@@ -161,7 +161,7 @@ export function writeCells(
     sdInner = "";
   } else {
     const open = sheetXml.indexOf("<sheetData");
-    if (open === -1) throw new Error("Sheet không có <sheetData>");
+    if (open === -1) throw new Error("Sheet has no <sheetData>");
     const openEnd = sheetXml.indexOf(">", open) + 1;
     const close = sheetXml.indexOf("</sheetData>", openEnd);
     sdStart = open;
@@ -240,7 +240,7 @@ export class XlsxTemplate {
 
   private text(path: string): string {
     const f = this.files[path];
-    if (!f) throw new Error(`Template thiếu file ${path}`);
+    if (!f) throw new Error(`Template is missing file ${path}`);
     return strFromU8(f);
   }
 
@@ -277,7 +277,7 @@ export class XlsxTemplate {
   /** Đặt giá trị cho một ô. Gọi nhiều lần rồi save() một lượt. */
   set(sheet: string, ref: string, value: CellValue): this {
     if (!this.sheetPath.has(sheet)) {
-      throw new Error(`Template không có sheet "${sheet}". Có: ${this.sheetNames.join(", ")}`);
+      throw new Error(`Template has no sheet "${sheet}". Available: ${this.sheetNames.join(", ")}`);
     }
     if (!this.pending.has(sheet)) this.pending.set(sheet, new Map());
     this.pending.get(sheet)!.set(ref, value);

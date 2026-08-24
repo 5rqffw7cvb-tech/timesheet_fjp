@@ -15,7 +15,7 @@ function connect(): Db {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     throw new Error(
-      "Thiếu biến môi trường DATABASE_URL. Sao chép .env.example thành .env rồi điền chuỗi kết nối Postgres.",
+      "Missing DATABASE_URL environment variable. Copy .env.example to .env and fill in the Postgres connection string.",
     );
   }
   const client =

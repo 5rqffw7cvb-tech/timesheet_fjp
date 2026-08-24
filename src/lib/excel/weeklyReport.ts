@@ -174,7 +174,7 @@ export function buildWeeklyReport(
     const rows = week.rows.slice(0, MAX_ITEMS);
     if (week.rows.length > MAX_ITEMS) {
       warnings.push(
-        `Tuần ${week.index}: có ${week.rows.length} tổ hợp project × 工種, template chỉ chứa được ${MAX_ITEMS}. ${week.rows.length - MAX_ITEMS} dòng bị bỏ qua.`,
+        `Week ${week.index}: ${week.rows.length} project×工種 combinations, template only holds ${MAX_ITEMS}. ${week.rows.length - MAX_ITEMS} row(s) were skipped.`,
       );
     }
 
@@ -212,7 +212,7 @@ export function buildWeeklyReport(
   const codes = [...new Set(data.projectCodes)];
   if (codes.length > MAX_PROJECT_CODES) {
     warnings.push(
-      `Tháng này dùng ${codes.length} project, 月間集計シート chỉ tổng hợp được ${MAX_PROJECT_CODES}.`,
+      `This month uses ${codes.length} projects, but 月間集計シート can only aggregate ${MAX_PROJECT_CODES}.`,
     );
   }
   const agg: Record<string, CellValue> = { X4: data.workingDays || null };
@@ -253,7 +253,7 @@ export function buildWeeklyReport(
     const rows = data.masterWorkTypes;
     if (rows.length > 82) {
       warnings.push(
-        `Master 工種 có ${rows.length} dòng nhưng công thức trong template chỉ dò tới dòng 83 (82 mã). Các mã dư sẽ không tra được コード.`,
+        `Master 工種 has ${rows.length} rows, but the template formula only looks up to row 83 (82 codes). Extra codes won't resolve コード.`,
       );
     }
     const values: Record<string, CellValue> = {};

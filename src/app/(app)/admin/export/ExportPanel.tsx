@@ -269,8 +269,8 @@ export default function ExportPanel({
       )}
 
       <div className="grid gap-3 md:grid-cols-4">
-        <Metric label="Member có dữ liệu" value={String(withData.length)} />
-        <Metric label="Dưới ngưỡng 140h*công số" value={String(totals.under)} tone={totals.under ? "warn" : "ok"} />
+        <Metric label={locale === "ja" ? "データありメンバー" : "Members with data"} value={String(withData.length)} />
+        <Metric label={locale === "ja" ? "140h×係数未満" : "Under 140h×factor"} value={String(totals.under)} tone={totals.under ? "warn" : "ok"} />
         <Metric label={locale === "ja" ? "180h×係数超過" : "Over 180h×factor"} value={String(totals.over)} tone={totals.over ? "warn" : "ok"} />
         <Metric label={`${locale === "ja" ? "調整金額" : "Adjustment total"} (${moneyUnit})`} value={totals.amount.toLocaleString(locale === "ja" ? "ja-JP" : "en-US")} />
       </div>
@@ -358,10 +358,18 @@ export default function ExportPanel({
       <div className="card p-4 text-sm text-slate-600">
         <h3 className="mb-2 font-semibold text-slate-700">{locale === "ja" ? "顧客送付時の注意" : "Notes before sending to the customer"}</h3>
         <ul className="list-inside list-disc space-y-1 text-slate-600">
-          <li>File xuất ra giữ nguyên 100% format của template gốc: 6 sheet tuần, 月間集計シート, 勤務報告書 và các sheet master.</li>
-          <li>App chỉ ghi vào ô nhập của 6 sheet tuần; 月間集計 và 勤務報告書 vẫn là công thức và tự tính khi mở bằng Excel.</li>
-          <li>Ô <span className="num">月間集計シート!X4</span> (所定日数) lấy từ mục Cấu hình. Kiểm tra lại trước khi gửi.</li>
-          <li>Mỗi sheet tuần chứa tối đa 20 dòng công việc. Nếu một tuần có nhiều hơn 20 tổ hợp project × 工種, app sẽ báo cảnh báo khi xuất.</li>
+          <li>{locale === "ja"
+            ? "出力ファイルは元テンプレートの形式を100%維持します：週次シート6枚、月間集計シート、勤務報告書、各マスターシート。"
+            : "The exported file keeps 100% of the original template format: 6 weekly sheets, 月間集計シート, 勤務報告書, and the master sheets."}</li>
+          <li>{locale === "ja"
+            ? "アプリが書き込むのは週次シート6枚の入力セルのみです。月間集計と勤務報告書は数式のままで、Excelで開くと自動計算されます。"
+            : "The app only writes into the input cells of the 6 weekly sheets; 月間集計 and 勤務報告書 remain formulas and recalculate automatically when opened in Excel."}</li>
+          <li>{locale === "ja"
+            ? <>セル <span className="num">月間集計シート!X4</span>（所定日数）は設定画面の値を使用します。送付前に必ず確認してください。</>
+            : <>Cell <span className="num">月間集計シート!X4</span> (所定日数) comes from the Settings page. Double-check it before sending.</>}</li>
+          <li>{locale === "ja"
+            ? "各週次シートは最大20行の作業行しか持てません。1週間にproject×工種の組み合わせが20を超える場合、出力時に警告が表示されます。"
+            : "Each weekly sheet holds at most 20 work rows. If a week has more than 20 project×工種 combinations, the app warns you on export."}</li>
         </ul>
       </div>
     </div>

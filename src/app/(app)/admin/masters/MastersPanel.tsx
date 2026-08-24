@@ -197,7 +197,7 @@ function WorkTypeTable({ rows, onMsg }: { rows: W[]; onMsg: (m: string) => void 
               <tr>
                 <th><button onClick={() => setSort(toggleSort(sort, "code"))}>CD</button></th>
                 <th><button onClick={() => setSort(toggleSort(sort, "name"))}>工種</button></th>
-                <th><button onClick={() => setSort(toggleSort(sort, "category"))}>Nhóm</button></th>
+                <th><button onClick={() => setSort(toggleSort(sort, "category"))}>{locale === "ja" ? "分類" : "Category"}</button></th>
                 <th>補足説明</th>
                 <th><button onClick={() => setSort(toggleSort(sort, "isActive"))}>{t("membersStatus")}</button></th>
               </tr>

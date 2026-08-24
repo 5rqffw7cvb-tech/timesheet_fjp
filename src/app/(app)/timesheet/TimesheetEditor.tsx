@@ -137,7 +137,7 @@ export default function TimesheetEditor({
         rows.push({
           projectId: pid,
           projectCode: p?.code ?? "?",
-          projectName: p?.name ?? "(không rõ)",
+          projectName: p?.name ?? (locale === "ja" ? "(不明)" : "(unknown)"),
           budgetHours: 0,
           usedHours: Math.round(used * 100) / 100,
         });
@@ -208,7 +208,7 @@ export default function TimesheetEditor({
         <div className="card-header">
           <h2 className="card-title">{locale === "ja" ? "プロジェクト別予算" : "Project budget"} — {data.year}年{String(data.month).padStart(2, "0")}月</h2>
           <span className="text-xs text-slate-500 num">
-            Tổng {liveTotals.total.toFixed(1)}h / {data.totalBudget.toFixed(1)}h
+            {locale === "ja" ? "合計" : "Total"} {liveTotals.total.toFixed(1)}h / {data.totalBudget.toFixed(1)}h
           </span>
         </div>
         <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3">

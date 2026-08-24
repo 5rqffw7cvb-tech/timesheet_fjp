@@ -187,7 +187,7 @@ export async function bulkApproveAction(
 /* ─────────────────────────── Thành viên ─────────────────────────── */
 
 const memberSchema = z.object({
-  username: z.string().min(3).max(32).regex(/^[a-z0-9._-]+$/, "Chỉ dùng chữ thường, số, . _ -"),
+  username: z.string().min(3).max(32).regex(/^[a-z0-9._-]+$/, "Use lowercase letters, numbers, and . _ - only"),
   fullName: z.string().min(1).max(120),
   displayName: z.string().max(60).optional(),
   employeeCode: z.string().max(30).optional(),
