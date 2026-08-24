@@ -14,6 +14,13 @@ import StatusBadge from "@/components/StatusBadge";
 import MonthNav from "@/components/MonthNav";
 import { useLocale } from "@/components/LocaleProvider";
 
+/** Ngày có 就業時間 nhưng thiếu hẳn 作業明細 thực tế, hay có nhưng tổng giờ lệch. */
+function dayMismatchKind(attendance: number, actualTotal: number): "none" | "missing" | "mismatch" {
+  if (attendance <= 0) return "none";
+  if (actualTotal <= 0) return "missing";
+  return Math.round((actualTotal - attendance) * 100) / 100 !== 0 ? "mismatch" : "none";
+}
+
 /**
  * DB lưu 実績 và 予定 thành 2 bản ghi time_entries riêng (isPlan khác nhau).
  * Gộp lại thành 1 dòng draft cho mỗi cặp project × 工種 × nội dung trùng nhau
@@ -153,6 +160,17 @@ export default function TimesheetEditor({
     return { total: Math.round(total * 100) / 100, byProject };
   }, [drafts]);
 
+  const mismatchedDays = useMemo(() => {
+    return data.days
+      .filter((d) => {
+        const dr = drafts[d.day];
+        const attendance = dr ? workedHours(dr.startMin, dr.endMin, dr.breakMin) : d.attendanceHours;
+        const actualTotal = dr ? dr.entries.reduce((s, e) => s + e.actualHours, 0) : d.entryHours;
+        return dayMismatchKind(attendance, actualTotal) !== "none";
+      })
+      .map((d) => d.day);
+  }, [data.days, drafts]);
+
   const budgetRows = useMemo(() => {
     const rows = data.budgets.map((b) => ({
       ...b, usedHours: Math.round((liveTotals.byProject.get(b.projectId) ?? 0) * 100) / 100,
@@ -207,6 +225,7 @@ export default function TimesheetEditor({
         saveState={saveState}
         errorMsg={errorMsg}
         onBeforeAction={flushPending}
+        mismatchedDays={mismatchedDays}
       />
 
       <div className="grid gap-4 lg:grid-cols-[290px_minmax(0,1fr)]">
@@ -263,21 +282,25 @@ export default function TimesheetEditor({
 /* ─────────────────────────── Toolbar ─────────────────────────── */
 
 function Toolbar({
-  data, liveTotal, saveState, errorMsg, onBeforeAction,
+  data, liveTotal, saveState, errorMsg, onBeforeAction, mismatchedDays,
 }: {
   data: MonthData;
   liveTotal: number;
   saveState: string;
   errorMsg: string | null;
   onBeforeAction: () => Promise<void>;
+  mismatchedDays: number[];
 }) {
   const { t, locale } = useLocale();
   const [note, setNote] = useState(data.report.memberNote ?? "");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [showFill, setShowFill] = useState(false);
+  const hasMismatch = mismatchedDays.length > 0;
+  const canSubmit = data.report.status === "DRAFT" || data.report.status === "REJECTED";
 
   async function submit() {
+    if (hasMismatch) return;
     if (!confirm(locale === "ja" ? "この月を管理者へ提出しますか？提出後は取り消すまで編集できません。" : "Submit this month to management? After submission you can't edit until you withdraw it.")) return;
     setBusy(true);
     await onBeforeAction();
@@ -337,8 +360,13 @@ function Toolbar({
               {locale === "ja" ? "提出取消" : "Withdraw"}
             </button>
           )}
-          {(data.report.status === "DRAFT" || data.report.status === "REJECTED") && (
-            <button className="btn-primary" onClick={submit} disabled={busy}>
+          {canSubmit && (
+            <button className="btn-primary" onClick={submit} disabled={busy || hasMismatch}
+                    title={hasMismatch
+                      ? (locale === "ja"
+                        ? `就業時間と作業明細が一致しない日があります（${mismatchedDays.length}日）。提出前に修正してください。`
+                        : `${mismatchedDays.length} day(s) don't match yet. Fix them before submitting.`)
+                      : undefined}>
               {busy ? t("loading") : t("timesheetSubmit")}
             </button>
           )}
@@ -350,7 +378,18 @@ function Toolbar({
 
       {showFill && !data.locked && <FillPanel data={data} onDone={() => setShowFill(false)} />}
 
-      {(data.report.status === "DRAFT" || data.report.status === "REJECTED") && (
+      {canSubmit && hasMismatch && (
+        <div className="flex items-start gap-2 border-t border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
+          <WarningIcon className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            {locale === "ja"
+              ? <>就業時間と作業明細の合計が一致しない日があるため、提出できません（<b className="num">{mismatchedDays.length}</b>日：{mismatchedDays.map((d) => String(d).padStart(2, "0")).join("、")}日）。左の日付一覧で該当日を修正してください。</>
+              : <>Can&apos;t submit yet — attendance and work-detail hours don&apos;t match on <b className="num">{mismatchedDays.length}</b> day(s) (day {mismatchedDays.map((d) => String(d).padStart(2, "0")).join(", ")}). Fix them from the day list on the left.</>}
+          </span>
+        </div>
+      )}
+
+      {canSubmit && (
         <div className="border-t border-slate-200 px-4 py-2">
              <input className="input" placeholder={locale === "ja" ? "管理者向けのコメント（任意）" : "Note for management (optional)"}
                  value={note} onChange={(e) => setNote(e.target.value)} />
@@ -441,10 +480,9 @@ function DayList({
           const breakMin = draft ? draft.breakMin : d.breakMin;
           const attendance = draft ? workedHours(startMin, endMin, breakMin) : d.attendanceHours;
           const hours = draft ? draft.entries.reduce((s, e) => s + e.actualHours, 0) : d.entryHours;
-          const hasEntries = draft ? draft.entries.some((e) => e.actualHours > 0) : d.entries.some((e) => !e.isPlan);
-          const noEntriesWarning = attendance > 0 && !hasEntries;
-          const mismatchWarning = attendance > 0 && hasEntries && Math.round((hours - attendance) * 100) / 100 !== 0;
-          const hasWarning = noEntriesWarning || mismatchWarning;
+          const kind = dayMismatchKind(attendance, hours);
+          const noEntriesWarning = kind === "missing";
+          const hasWarning = kind !== "none";
           const on = d.day === selected;
           const isToday = isCurrentMonth && d.day === today.day;
           const off = d.isWeekend || d.isHoliday || draft?.dayType === "PUBLIC_OFF";
@@ -472,9 +510,7 @@ function DayList({
               <span className="ml-auto flex items-center gap-2">
                 {hasWarning && (
                   <span title={warningTitle} className={`shrink-0 ${noEntriesWarning ? "text-rose-500" : "text-amber-500"}`}>
-                    <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
-                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.166 2.357-1.166 3.03 0l6.28 10.875c.673 1.167-.169 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 6a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 6Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
-                    </svg>
+                    <WarningIcon className="h-3.5 w-3.5" />
                   </span>
                 )}
                 {draft?.leaveNote && (
@@ -490,5 +526,13 @@ function DayList({
         })}
       </div>
     </div>
+  );
+}
+
+function WarningIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" {...props}>
+      <path fillRule="evenodd" d="M8.485 2.495c.673-1.166 2.357-1.166 3.03 0l6.28 10.875c.673 1.167-.169 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 6a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 6Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+    </svg>
   );
 }

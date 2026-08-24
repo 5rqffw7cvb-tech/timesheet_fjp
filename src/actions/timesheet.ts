@@ -8,7 +8,7 @@ import {
   dayLogs, timeEntries, monthlyReports, auditLogs,
 } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { ensureReport } from "@/lib/period";
+import { ensureReport, loadMonth, findMismatchedDays } from "@/lib/period";
 import { parseYmd } from "@/lib/dates";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date");
@@ -183,6 +183,16 @@ export async function submitMonthAction(
   if (report.status === "APPROVED") {
     return { ok: false, error: "This month is closed." };
   }
+
+  const monthData = await loadMonth(user.id, year, month);
+  const badDays = findMismatchedDays(monthData.days);
+  if (badDays.length > 0) {
+    return {
+      ok: false,
+      error: `Cannot submit: attendance and work-detail hours don't match on ${badDays.length} day(s) (day ${badDays.join(", ")}). Fix them first.`,
+    };
+  }
+
   await db.update(monthlyReports).set({
     status: "SUBMITTED",
     submittedAt: new Date(),

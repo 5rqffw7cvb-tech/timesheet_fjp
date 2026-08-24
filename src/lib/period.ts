@@ -201,6 +201,21 @@ export async function loadMonth(
   };
 }
 
+/**
+ * Những ngày có 就業時間 (giờ vào/ra) nhưng 作業明細 thực tế (isPlan=false)
+ * bị thiếu hẳn hoặc tổng giờ không khớp với 就業時間. Dùng để chặn 提出 khi
+ * còn ngày chưa 一致.
+ */
+export function findMismatchedDays(days: DayData[]): number[] {
+  const bad: number[] = [];
+  for (const d of days) {
+    if (d.attendanceHours <= 0) continue;
+    if (d.entryHours <= 0) { bad.push(d.day); continue; }
+    if (Math.round((d.entryHours - d.attendanceHours) * 100) / 100 !== 0) bad.push(d.day);
+  }
+  return bad;
+}
+
 /** Số ngày làm việc mặc định = số ngày trong tháng trừ T7/CN và ngày lễ đã khai báo. */
 export function defaultWorkingDays(year: number, month: number): number {
   const total = daysInMonth(year, month);
