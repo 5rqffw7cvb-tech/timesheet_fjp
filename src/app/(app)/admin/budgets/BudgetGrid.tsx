@@ -149,7 +149,11 @@ export default function BudgetGrid({
     <div className="space-y-4">
       <div className="card flex flex-wrap items-center gap-3 px-4 py-3">
         <MonthNav year={year} month={month} />
-        <span className="text-sm text-slate-500">{locale === "ja" ? `工数予算と単価をメンバー×PJで管理します（1.0 = 180h、単価 ${moneyUnit}/MM）` : `Manage budget and unit price per member × project (1.0 = 180h, unit price ${moneyUnit}/MM)`}</span>
+        <span className="text-sm text-slate-500">
+          {locale === "ja"
+            ? `月ごとの工数予算・単価（1.0 = 180h、${moneyUnit}/MM）。前月分は自動で引き継がれます。`
+            : `Monthly quota & rate per member × project (1.0 = 180h, ${moneyUnit}/MM). Hours auto-carry from last month.`}
+        </span>
         <div className="ml-auto flex items-center gap-2">
           <input className="input w-64" placeholder={t("budgetSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
           <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">

@@ -1,10 +1,66 @@
-import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
-  budgets, dayLogs, monthlyReports, projects, projectRates, timeEntries, users, monthSettings,
+  budgets, dayLogs, monthlyReports, projects, projectAssignments, projectRates, timeEntries, users, monthSettings,
 } from "@/db/schema";
 import { daysInMonth, ymd, workedHours } from "./dates";
-import { defaultWorkingDays } from "./period";
+import { defaultWorkingDays, monthRange } from "./period";
+
+/**
+ * Member×project vẫn đang trong khoảng Assigned period của tháng này nhưng
+ * chưa có budget row cho tháng này -> tự copy 工数(quota) từ tháng gần nhất
+ * (đã từng nhập) trong cùng khoảng assign, để admin không phải bấm "Copy
+ * previous month" thủ công cho từng người mới join / từng tháng mới. Đơn giá
+ * đã tự "kế thừa" theo effectiveFrom qua projectRates rồi nên chỉ cần lo phần
+ * 工数 ở đây. Idempotent — chỉ insert khi chưa có row cho tháng này.
+ */
+export async function carryForwardBudgets(year: number, month: number): Promise<number> {
+  const { first, last } = monthRange(year, month);
+  const period = year * 12 + month;
+
+  const activeAssignments = await db.select({
+    userId: projectAssignments.userId,
+    projectId: projectAssignments.projectId,
+    startDate: projectAssignments.startDate,
+  }).from(projectAssignments)
+    .where(and(
+      or(isNull(projectAssignments.startDate), lte(projectAssignments.startDate, last)),
+      or(isNull(projectAssignments.endDate), gte(projectAssignments.endDate, first)),
+    ));
+  if (activeAssignments.length === 0) return 0;
+
+  const userIds = [...new Set(activeAssignments.map((a) => a.userId))];
+  const [existingThisMonth, priorBudgets] = await Promise.all([
+    db.select({ userId: budgets.userId, projectId: budgets.projectId })
+      .from(budgets).where(and(eq(budgets.year, year), eq(budgets.month, month))),
+    db.select().from(budgets).where(inArray(budgets.userId, userIds)),
+  ]);
+  const existingSet = new Set(existingThisMonth.map((r) => `${r.userId}|${r.projectId}`));
+
+  const latestByPair = new Map<string, typeof priorBudgets[number]>();
+  for (const b of priorBudgets) {
+    const p = b.year * 12 + b.month;
+    if (p >= period) continue;
+    const key = `${b.userId}|${b.projectId}`;
+    const cur = latestByPair.get(key);
+    if (!cur || p > cur.year * 12 + cur.month) latestByPair.set(key, b);
+  }
+
+  let copied = 0;
+  for (const a of activeAssignments) {
+    const key = `${a.userId}|${a.projectId}`;
+    if (existingSet.has(key)) continue;
+    const prior = latestByPair.get(key);
+    if (!prior) continue;
+    // assign có thể đã kết thúc rồi mở lại với startDate mới -> không lôi số cũ từ đợt assign trước
+    if (a.startDate && ymd(prior.year, prior.month, 1) < a.startDate) continue;
+    await db.insert(budgets)
+      .values({ userId: a.userId, projectId: a.projectId, year, month, hours: prior.hours, unitPriceMm: prior.unitPriceMm })
+      .onConflictDoNothing({ target: [budgets.userId, budgets.projectId, budgets.year, budgets.month] });
+    copied++;
+  }
+  return copied;
+}
 
 export interface OverviewRow {
   userId: string;

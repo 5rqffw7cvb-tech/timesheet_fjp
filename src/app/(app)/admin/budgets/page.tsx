@@ -1,5 +1,5 @@
 import { requireAdmin } from "@/lib/auth";
-import { monthOverview } from "@/lib/adminData";
+import { monthOverview, carryForwardBudgets } from "@/lib/adminData";
 import { loadMasters } from "@/lib/period";
 import { todayParts, ymd, daysInMonth } from "@/lib/dates";
 import BudgetGrid from "./BudgetGrid";
@@ -20,6 +20,10 @@ export default async function BudgetsPage({
   const now = todayParts();
   const year = Number(sp.year) || now.year;
   const month = Number(sp.month) || now.month;
+
+  // Tự kế thừa 工数 từ tháng gần nhất cho các assign còn hiệu lực tháng này
+  // trước khi đọc dữ liệu — admin không cần bấm "Copy previous month" nữa.
+  await carryForwardBudgets(year, month);
 
   const [rows, masters, rateRows, orgRows, assignmentRows] = await Promise.all([
     monthOverview(year, month),
