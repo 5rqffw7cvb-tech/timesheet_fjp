@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   createMemberAction, updateMemberAction, toggleMemberAction, resetPasswordAction,
+  deleteMemberAction,
 } from "@/actions/admin";
 import { useLocale } from "@/components/LocaleProvider";
 import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableUi";
@@ -58,6 +59,23 @@ export default function MemberTable({
     startTransition(async () => {
       const res = await toggleMemberAction(m.id, !m.isActive);
       setMsg(res.ok ? (locale === "ja" ? "更新しました。" : "Updated.") : res.error ?? (locale === "ja" ? "エラー" : "Error"));
+      router.refresh();
+    });
+  }
+
+  function remove(m: Member) {
+    const typed = prompt(
+      locale === "ja"
+        ? `${m.fullName} を削除します。この操作は取り消せません。関連する勤怠・work details・budget・月次レポートもすべて削除されます。\n続けるには、ログインID「${m.username}」を入力してください。`
+        : `This permanently deletes ${m.fullName}, along with all of their attendance, work details, budgets, and monthly reports. This cannot be undone.\nType the login ID "${m.username}" to confirm.`,
+    );
+    if (typed !== m.username) {
+      if (typed !== null) setMsg(locale === "ja" ? "ログインIDが一致しないため中止しました。" : "Login ID didn't match — cancelled.");
+      return;
+    }
+    startTransition(async () => {
+      const res = await deleteMemberAction(m.id);
+      setMsg(res.ok ? (res.message ?? (locale === "ja" ? "削除しました。" : "Deleted.")) : res.error ?? (locale === "ja" ? "エラー" : "Error"));
       router.refresh();
     });
   }
@@ -135,6 +153,9 @@ export default function MemberTable({
                   <button className="btn-ghost btn-sm" onClick={() => reset(m)} disabled={busy}>Reset</button>
                   <button className="btn-ghost btn-sm text-rose-600" onClick={() => toggle(m)} disabled={busy}>
                     {m.isActive ? (locale === "ja" ? "無効化" : "Disable") : (locale === "ja" ? "有効化" : "Enable")}
+                  </button>
+                  <button className="btn-ghost btn-sm text-rose-700" onClick={() => remove(m)} disabled={busy}>
+                    {locale === "ja" ? "削除" : "Delete"}
                   </button>
                 </td>
               </tr>

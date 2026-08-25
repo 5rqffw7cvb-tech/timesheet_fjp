@@ -259,6 +259,36 @@ export async function toggleMemberAction(id: string, isActive: boolean): Promise
   return { ok: true };
 }
 
+/**
+ * Xoá hẳn tài khoản khỏi hệ thống — kéo theo xoá toàn bộ dữ liệu liên quan
+ * (chấm công, work details, budget, monthly report...) vì các bảng đó đều
+ * có onDelete: cascade tới users. Đây là thao tác không thể hoàn tác, khác
+ * với toggleMemberAction (chỉ ẩn/khoá đăng nhập, giữ nguyên dữ liệu).
+ */
+export async function deleteMemberAction(id: string): Promise<ActionResult> {
+  const admin = await requireAdmin();
+  if (admin.id === id) return fail("You cannot delete your own account.");
+
+  const [target] = await db.select({
+    username: users.username, fullName: users.fullName, role: users.role,
+  }).from(users).where(eq(users.id, id)).limit(1);
+  if (!target) return fail("Account not found.");
+
+  if (target.role === "ADMIN") {
+    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(users).where(eq(users.role, "ADMIN"));
+    if (count <= 1) return fail("Cannot delete the last remaining admin account.");
+  }
+
+  await db.delete(users).where(eq(users.id, id));
+  await db.insert(auditLogs).values({
+    actorId: admin.id, action: "DELETE_MEMBER", target: id,
+    detail: `${target.username} (${target.fullName})`,
+  });
+  revalidatePath("/admin/members");
+  return { ok: true, message: `Deleted ${target.fullName}.` };
+}
+
 export async function resetPasswordAction(id: string, password: string): Promise<ActionResult> {
   const admin = await requireAdmin();
   if (password.length < 8) return fail("Password must be at least 8 characters.");
