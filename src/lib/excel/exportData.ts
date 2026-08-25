@@ -108,14 +108,40 @@ export async function buildMemberReport(
     : entryRows;
   const project = effectiveProjectId ? projectById.get(effectiveProjectId) : undefined;
 
+  /*
+   * Member làm nhiều project trong ngày -> 始業/終業 (giờ vào/ra) là MỘT mốc
+   * chung cho cả ngày, không tách riêng theo project được. Nếu xuất nguyên
+   * giờ vào/ra đó cho từng file project thì 就業時間 (giờ vào/ra − nghỉ) sẽ
+   * hiện FULL cả ngày ở mọi file, trong khi 作業明細 chỉ liệt kê đúng phần
+   * việc của project đó -> sai lệch, nhìn như member khai nhiều giờ hơn thực
+   * tế làm cho project này. Với export theo project (isMultiProject), giữ
+   * nguyên giờ vào/ra thật (dữ kiện vật lý), nhưng cộng thêm phần giờ đã
+   * làm cho project KHÁC trong ngày vào cột nghỉ/外出時間 — nhờ vậy 就業時間
+   * tính ra đúng bằng tổng giờ thực tế đã khai cho riêng project đang xuất.
+   */
+  const scopedActualMinByDay = new Map<number, number>();
+  if (isMultiProject && effectiveProjectId) {
+    for (const { e } of scopedEntryRows) {
+      if (e.isPlan) continue;
+      const day = parseYmd(e.date).day;
+      scopedActualMinByDay.set(day, (scopedActualMinByDay.get(day) ?? 0) + Math.round(Number(e.hours) * 60));
+    }
+  }
+
   /* ── ngày ── */
-  const days: ExportDay[] = logRows.map((l) => ({
-    day: parseYmd(l.date).day,
-    startMin: l.dayType === "PUBLIC_OFF" ? null : l.startMin,
-    endMin: l.dayType === "PUBLIC_OFF" ? null : l.endMin,
-    breakMin: l.breakMin,
-    attendanceNote: l.leaveNote,
-  }));
+  const days: ExportDay[] = logRows.map((l) => {
+    const day = parseYmd(l.date).day;
+    const startMin = l.dayType === "PUBLIC_OFF" ? null : l.startMin;
+    const endMin = l.dayType === "PUBLIC_OFF" ? null : l.endMin;
+    let breakMin = l.breakMin;
+    if (isMultiProject && effectiveProjectId && startMin != null && endMin != null) {
+      let span = endMin - startMin;
+      if (span < 0) span += 24 * 60; // ca qua đêm
+      const scopedMin = scopedActualMinByDay.get(day) ?? 0;
+      breakMin = Math.max(0, span - scopedMin);
+    }
+    return { day, startMin, endMin, breakMin, attendanceNote: l.leaveNote };
+  });
 
   /* ── gom dòng công việc theo tuần × (project, 工種) ── */
   const offset = mondayIndex(year, month, 1);
