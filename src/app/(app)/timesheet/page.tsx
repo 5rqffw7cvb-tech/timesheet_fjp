@@ -17,12 +17,13 @@ export default async function TimesheetPage({
   const month = Number(sp.month) || now.month;
   const isAdmin = user.role === "ADMIN";
 
-  // Admin có thể chọn xem/sửa timesheet của member khác qua ?user=<id> —
-  // member thường chỉ xem được của chính mình dù cố truyền query khác.
+  // Admin không tự chấm công nên không có timesheet của riêng mình — chọn
+  // xem/sửa timesheet của member qua ?user=<id>, mặc định là member đầu
+  // tiên. Member thường chỉ xem được của chính mình dù cố truyền query khác.
   const members = isAdmin ? await activeMembers() : [];
   const requestedUserId = isAdmin ? sp.user : undefined;
-  const viewingUser = requestedUserId
-    ? (members.find((m) => m.id === requestedUserId) ?? (requestedUserId === user.id ? user : null))
+  const viewingUser = isAdmin
+    ? (members.find((m) => m.id === requestedUserId) ?? members[0] ?? null)
     : user;
   const viewingUserId = viewingUser?.id ?? user.id;
 
@@ -40,12 +41,7 @@ export default async function TimesheetPage({
       viewingUserId={viewingUserId}
       viewingUserName={viewingUser?.fullName ?? user.fullName}
       isAdmin={isAdmin}
-      members={isAdmin
-        ? [
-            { id: user.id, fullName: user.fullName, roleTitle: user.roleTitle },
-            ...members.map((m) => ({ id: m.id, fullName: m.fullName, roleTitle: m.roleTitle })),
-          ]
-        : undefined}
+      members={isAdmin ? members.map((m) => ({ id: m.id, fullName: m.fullName, roleTitle: m.roleTitle })) : undefined}
     />
   );
 }
