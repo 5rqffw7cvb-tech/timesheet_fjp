@@ -142,13 +142,38 @@ export function buildWeeklyReport(
     wb.setMany(sheet, clear);
   }
 
-  /* 2. Header — chỉ 1週 chứa giá trị thật, các sheet khác tham chiếu sang */
+  /*
+   * 2. Header. Bản thân 2週〜6週, 月間集計シート, 勤務報告書 đều lấy company/tên/
+   * năm/tháng qua công thức tham chiếu (trực tiếp hoặc gián tiếp qua nhiều
+   * lớp) về đúng 4 ô này trên 1週 — Excel chỉ tính lại công thức đó khi mở ở
+   * chế độ chỉnh sửa đầy đủ. Ở 保護ビュー (Protected View), Excel KHÔNG tính
+   * lại trước khi người dùng bấm "編集を有効にする", nên các ô công thức đó
+   * vẫn hiện giá trị đã cache sẵn trong file mẫu (VD tên cũ, hoặc rỗng) —
+   * xem 就業報告書!N6. Để hiển thị đúng ngay cả khi chưa bấm gì, ghi thẳng
+   * giá trị thật (không qua công thức) vào từng nơi lặp lại này.
+   */
   wb.setMany("1週", {
     B3: data.year,
     C3: data.month,
     C6: data.companyName,
     C7: data.memberName,
     D7: data.roleTitle || null,
+  });
+  for (let w = 2; w <= MAX_WEEKS; w++) {
+    wb.setMany(sheetOf(w), {
+      B3: data.year,
+      C3: data.month,
+      C6: data.companyName,
+      C7: data.memberName,
+    });
+  }
+  wb.setMany("月間集計シート", {
+    B29: data.companyName,
+    C29: data.memberName,
+  });
+  wb.setMany("勤務報告書", {
+    N5: data.companyName,
+    N6: data.memberName,
   });
 
   /* 3. Giờ vào / ra / nghỉ + 勤務欄 theo từng ngày */
