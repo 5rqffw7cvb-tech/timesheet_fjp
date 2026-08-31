@@ -1,11 +1,11 @@
 import { requireAdmin } from "@/lib/auth";
 import { monthOverview, carryForwardBudgets } from "@/lib/adminData";
-import { loadMasters } from "@/lib/period";
+import { loadMasters, defaultWorkingDays } from "@/lib/period";
 import { todayParts, ymd, daysInMonth } from "@/lib/dates";
 import BudgetGrid from "./BudgetGrid";
 import { db } from "@/db";
-import { orgSettings, projectRates, projectAssignments } from "@/db/schema";
-import { lte } from "drizzle-orm";
+import { orgSettings, projectRates, projectAssignments, monthSettings } from "@/db/schema";
+import { and, eq, lte } from "drizzle-orm";
 import { normalizeBillingCurrency } from "@/lib/currency";
 
 const HOURS_PER_CONG = 180;
@@ -25,7 +25,7 @@ export default async function BudgetsPage({
   // trước khi đọc dữ liệu — admin không cần bấm "Copy previous month" nữa.
   await carryForwardBudgets(year, month);
 
-  const [rows, masters, rateRows, orgRows, assignmentRows] = await Promise.all([
+  const [rows, masters, rateRows, orgRows, assignmentRows, settingRows] = await Promise.all([
     monthOverview(year, month),
     loadMasters(),
     db.select({
@@ -42,8 +42,13 @@ export default async function BudgetsPage({
       startDate: projectAssignments.startDate,
       endDate: projectAssignments.endDate,
     }).from(projectAssignments),
+    db.select({ workingDays: monthSettings.workingDays }).from(monthSettings)
+      .where(and(eq(monthSettings.year, year), eq(monthSettings.month, month))).limit(1),
   ]);
   const billingCurrency = normalizeBillingCurrency(orgRows[0]?.billingCurrency);
+  // 所定日数 thay đổi theo từng tháng (tháng nhiều/ít ngày lễ) -> 標準時間 của
+  // 1.0 工数 không phải hằng số cố định, phải tính lại theo tháng đang xem.
+  const workingDays = settingRows[0]?.workingDays ?? defaultWorkingDays(year, month);
   const assignmentPeriods: Record<string, { startDate: string | null; endDate: string | null }> = {};
   for (const a of assignmentRows) {
     assignmentPeriods[`${a.userId}|${a.projectId}`] = { startDate: a.startDate, endDate: a.endDate };
@@ -85,6 +90,7 @@ export default async function BudgetsPage({
       initialRates={initialRates}
       initialPeriods={assignmentPeriods}
       billingCurrency={billingCurrency}
+      workingDays={workingDays}
     />
   );
 }

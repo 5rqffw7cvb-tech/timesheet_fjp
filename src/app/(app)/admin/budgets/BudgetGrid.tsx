@@ -9,6 +9,8 @@ import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableU
 import { useLocale } from "@/components/LocaleProvider";
 
 const HOURS_PER_CONG = 180;
+/** 1日の所定労働時間。週報テンプレートの計算式（×7.5）と揃える。 */
+const HOURS_PER_DAY = 7.5;
 
 interface Member {
   userId: string;
@@ -29,7 +31,7 @@ interface Period {
  * input cột, không quản lý nổi).
  */
 export default function BudgetGrid({
-  year, month, members, projects, initial, initialRates, initialPeriods, billingCurrency,
+  year, month, members, projects, initial, initialRates, initialPeriods, billingCurrency, workingDays,
 }: {
   year: number; month: number;
   members: Member[];
@@ -38,9 +40,12 @@ export default function BudgetGrid({
   initialRates: Record<string, number>;
   initialPeriods: Record<string, Period>;
   billingCurrency: BillingCurrency;
+  /** 所定日数（月ごとに祝日等で変動）。1.0工数の実時間換算に使う。 */
+  workingDays: number;
 }) {
   const moneyUnit = currencySymbol(billingCurrency);
   const { t, locale } = useLocale();
+  const monthStandardHours = round2(workingDays * HOURS_PER_DAY);
   const [values, setValues] = useState<Record<string, number>>(initial);
   const [rates, setRates] = useState<Record<string, number>>(initialRates);
   const [periods, setPeriods] = useState<Record<string, Period>>(initialPeriods);
@@ -151,8 +156,8 @@ export default function BudgetGrid({
         <MonthNav year={year} month={month} />
         <span className="text-sm text-slate-500">
           {locale === "ja"
-            ? `月ごとの工数予算・単価（1.0 = 180h、${moneyUnit}/MM）。前月分は自動で引き継がれます。`
-            : `Monthly quota & rate per member × project (1.0 = 180h, ${moneyUnit}/MM). Hours auto-carry from last month.`}
+            ? `月ごとの工数（0.5, 1.0, 1.2…）予算・単価（${moneyUnit}/MM）。今月の1.0工数＝${workingDays}日×7.5h＝${monthStandardHours}h（所定日数は月ごとに変動、精算幅140〜180hは固定）。前月分は自動で引き継がれます。`
+            : `Monthly effort quota (e.g. 0.5, 1.0, 1.2) & rate per member × project (${moneyUnit}/MM). This month, 1.0 effort = ${workingDays} working days × 7.5h = ${monthStandardHours}h (standard hours vary by month; the 140-180h settlement range stays fixed). Effort auto-carries from last month.`}
         </span>
         <div className="ml-auto flex items-center gap-2">
           <input className="input w-64" placeholder={t("budgetSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
@@ -178,7 +183,8 @@ export default function BudgetGrid({
               <th className="w-6" />
               <th><button onClick={() => setSort(toggleSort(sort, "fullName"))} className="min-w-[200px] text-left">{t("membersTitle")}</button></th>
               <th className="text-right">{locale === "ja" ? "担当PJ数" : "Projects"}</th>
-              <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "totalBudget"))}>{locale === "ja" ? "合計予算(工数)" : "Total budget"}</button></th>
+              <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "totalBudget"))}>{locale === "ja" ? "合計工数" : "Total effort"}</button></th>
+              <th className="text-right">{locale === "ja" ? "標準時間" : "Standard hours"}</th>
               <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "totalUsed"))}>{locale === "ja" ? "使用済み(工数)" : "Used"}</button></th>
             </tr>
           </thead>
@@ -204,18 +210,20 @@ export default function BudgetGrid({
                     </td>
                     <td className="text-right num text-slate-500">{pids.length || "—"}</td>
                     <td className="text-right num font-semibold">{totalBudget ? totalBudget.toFixed(2) : "—"}</td>
+                    <td className="text-right num text-slate-500">{totalBudget ? `${round2(totalBudget * monthStandardHours).toFixed(1)}h` : "—"}</td>
                     <td className="text-right num text-slate-500">{totalUsedCong ? totalUsedCong.toFixed(2) : "—"}</td>
                   </tr>
                   {isOpen && (
                     <tr>
                       <td />
-                      <td colSpan={4} className="bg-slate-50 p-0">
+                      <td colSpan={5} className="bg-slate-50 p-0">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="text-xs text-slate-400">
                               <th className="py-1 pl-3 text-left">{locale === "ja" ? "プロジェクト" : "Project"}</th>
                               <th className="text-center">{locale === "ja" ? "アサイン期間" : "Assigned period"}</th>
-                              <th className="text-right">{locale === "ja" ? "工数" : "hours"}</th>
+                              <th className="text-right">{locale === "ja" ? "工数" : "effort"}</th>
+                              <th className="text-right">{locale === "ja" ? "標準時間" : "std. hours"}</th>
                               <th className="text-right">{locale === "ja" ? "単価" : "unit price"}</th>
                               <th className="py-1 pr-3 text-right">{locale === "ja" ? "使用済み" : "used"}</th>
                             </tr>
@@ -262,9 +270,12 @@ export default function BudgetGrid({
                                       type="number" min={0} step={0.1}
                                       className={`input num w-24 text-right ${dirty.has(key) ? "border-brand-400 bg-brand-50" : ""}`}
                                       value={budget === 0 ? "" : budget}
-                                      placeholder={locale === "ja" ? "工数" : "hours"}
+                                      placeholder={locale === "ja" ? "工数" : "effort"}
                                       onChange={(e) => set(m.userId, pid, Number(e.target.value) || 0)}
                                     />
+                                  </td>
+                                  <td className="text-right num text-xs text-slate-400">
+                                    {budget > 0 ? `${round2(budget * monthStandardHours).toFixed(1)}h` : "—"}
                                   </td>
                                   <td className="text-right">
                                     <input
@@ -286,7 +297,7 @@ export default function BudgetGrid({
                               );
                             })}
                             <tr onClick={(e) => e.stopPropagation()}>
-                              <td colSpan={5} className="py-2 pl-3">
+                              <td colSpan={6} className="py-2 pl-3">
                                 <select className="select w-64" value="" onChange={(e) => { addProjectToMember(m.userId, e.target.value); e.target.value = ""; }}>
                                   <option value="">+ {locale === "ja" ? "プロジェクトを追加" : "Add project"}</option>
                                   {projects.filter((p) => !pids.includes(p.id)).map((p) => (
@@ -304,7 +315,7 @@ export default function BudgetGrid({
               );
             })}
             {filteredRows.length === 0 && (
-              <tr><td colSpan={5} className="py-8 text-center text-slate-400">{t("noData")}</td></tr>
+              <tr><td colSpan={6} className="py-8 text-center text-slate-400">{t("noData")}</td></tr>
             )}
           </tbody>
         </table>
