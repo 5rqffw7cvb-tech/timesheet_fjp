@@ -7,6 +7,8 @@ import { daysInMonth, ymd, workedHours } from "./dates";
 import { defaultWorkingDays, monthRange } from "./period";
 
 const HOURS_PER_CONG = 180;
+/** 1日の所定労働時間 — 代休を実働扱いにする際の換算に使う。 */
+const HOURS_PER_DAY = 7.5;
 
 /**
  * Member×project vẫn đang trong khoảng Assigned period của tháng này nhưng
@@ -78,6 +80,14 @@ export interface OverviewRow {
   reviewNote: string | null;
   budgetHours: number;
   usedHours: number;
+  /**
+   * 代休 (SUB_OFF) — bù cho tháng trước đã đi làm T7/CN. Vẫn tính vào giờ
+   * thực để chốt billing (không bị coi là nghỉ trừ giờ), quy đổi theo
+   * HOURS_PER_DAY vì ngày đó member không chấm công/nhập work details.
+   * Đã được cộng sẵn vào usedHours; tách riêng ra đây để filterOverviewRows
+   * cộng lại đúng khi lọc theo project (không tính theo tỷ lệ project).
+   */
+  subOffHours: number;
   attendanceHours: number;   // tổng 就業時間 tính từ giờ vào/ra
   daysLogged: number;
   byProject: {
@@ -142,12 +152,17 @@ export async function monthOverview(year: number, month: number): Promise<Overvi
 
   const reportByUser = new Map(reportRows.map((r) => [r.userId, r]));
   const attendanceByUser = new Map<string, { hours: number; days: number }>();
+  const subOffDaysByUser = new Map<string, number>();
   for (const l of logRows) {
     const h = workedHours(l.startMin, l.endMin, l.breakMin);
     const cur = attendanceByUser.get(l.userId) ?? { hours: 0, days: 0 };
     cur.hours += h;
     if (h > 0) cur.days += 1;
     attendanceByUser.set(l.userId, cur);
+    // Nhận theo cả 2 cách nhập: chọn 日区分=代休 (đúng chuẩn) hoặc chỉ gõ
+    // "代休" vào ô 勤務欄/休暇 (free text) — member/admin có thể chỉ quen dùng 1 trong 2.
+    const isSubOff = l.dayType === "SUB_OFF" || (l.leaveNote?.includes("代休") ?? false);
+    if (isSubOff) subOffDaysByUser.set(l.userId, (subOffDaysByUser.get(l.userId) ?? 0) + 1);
   }
 
   const projectMap = new Map<string, Map<string, {
@@ -181,6 +196,7 @@ export async function monthOverview(year: number, month: number): Promise<Overvi
       .sort((a, b) => a.code.localeCompare(b.code));
     const att = attendanceByUser.get(u.id) ?? { hours: 0, days: 0 };
     const report = reportByUser.get(u.id);
+    const subOffHours = round2((subOffDaysByUser.get(u.id) ?? 0) * HOURS_PER_DAY);
     const budgetHours = round2(per.reduce((s, p) => s + p.budget, 0));
     // Factor dùng cho 下限/上限 (140h・180h * factor) = tổng 工数 đã assign tháng
     // này quy đổi ra 人月 (1.0 = 180h), không phải số cố định nhập tay nữa —
@@ -202,7 +218,8 @@ export async function monthOverview(year: number, month: number): Promise<Overvi
       memberNote: report?.memberNote ?? null,
       reviewNote: report?.reviewNote ?? null,
       budgetHours,
-      usedHours: round2(per.reduce((s, p) => s + p.used, 0)),
+      usedHours: round2(per.reduce((s, p) => s + p.used, 0) + subOffHours),
+      subOffHours,
       attendanceHours: round2(att.hours),
       daysLogged: att.days,
       byProject: per.map((p) => ({
@@ -245,7 +262,9 @@ function filterOverviewRows(rows: OverviewRow[], filterSet: Set<string> | null, 
     .filter((row) => scope !== "approved" || row.status === "APPROVED")
     .map((row) => {
       const byProject = filterSet ? row.byProject.filter((p) => filterSet.has(p.projectId)) : row.byProject;
-      const usedHours = round2(byProject.reduce((s, p) => s + p.used, 0));
+      // 代休 không gắn với project cụ thể nào -> giữ nguyên khi lọc theo
+      // project, không chia theo tỷ lệ như hours thực đã làm.
+      const usedHours = round2(byProject.reduce((s, p) => s + p.used, 0) + row.subOffHours);
       const budgetHours = round2(byProject.reduce((s, p) => s + p.budget, 0));
       const billingFactor = filterSet
         ? (budgetHours > 0 ? round2(budgetHours / HOURS_PER_CONG) : 0)
@@ -300,6 +319,7 @@ export async function monthOverviewForPeriods(
           byProject: [],
           budgetHours: 0,
           usedHours: 0,
+          subOffHours: 0,
           attendanceHours: 0,
           daysLogged: 0,
           billingFactor: 0,
@@ -310,6 +330,7 @@ export async function monthOverviewForPeriods(
       acc.attendanceHours = round2(acc.attendanceHours + row.attendanceHours);
       acc.daysLogged += row.daysLogged;
       acc.usedHours = round2(acc.usedHours + row.usedHours);
+      acc.subOffHours = round2(acc.subOffHours + row.subOffHours);
       acc.budgetHours = round2(acc.budgetHours + row.budgetHours);
       acc.billingFactor = round2(acc.billingFactor + row.billingFactor);
 

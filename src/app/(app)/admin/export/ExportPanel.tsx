@@ -302,7 +302,19 @@ export default function ExportPanel({
                   <div className="font-medium text-slate-700">{member.fullName}</div>
                   <div className="text-xs text-slate-400">{member.displayName || member.username}</div>
                 </td>
-                <td className="text-right num">{member.usedHours.toFixed(2)}</td>
+                <td className="text-right num">
+                  {member.usedHours.toFixed(2)}
+                  {member.subOffHours > 0 && (
+                    <span
+                      className="ml-1 text-[10px] text-emerald-600"
+                      title={locale === "ja"
+                        ? `内訳: 代休 ${member.subOffHours.toFixed(1)}h を含む`
+                        : `Includes ${member.subOffHours.toFixed(1)}h of substitute-holiday (代休) hours`}
+                    >
+                      (+{member.subOffHours.toFixed(1)}h {locale === "ja" ? "代休" : "sub-off"})
+                    </span>
+                  )}
+                </td>
                 <td className="text-right num">{member.billingFactor.toFixed(2)}</td>
                 <td className="text-right num">{calc.lowerHours.toFixed(2)}</td>
                 <td className="text-right num">{calc.upperHours.toFixed(2)}</td>

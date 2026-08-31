@@ -41,7 +41,7 @@ const DAY_TYPES: { value: DayData["dayType"]; ja: string; en: string }[] = [
 ];
 
 const LEAVE_PRESETS = [
-  "", "全休", "午前休", "午後休", "有給休暇", "特別休暇", "慶弔休暇", "病気欠勤",
+  "", "全休", "午前休", "午後休", "有給休暇", "特別休暇", "慶弔休暇", "病気欠勤", "代休",
 ];
 
 export default function DayEditor({
@@ -182,6 +182,11 @@ export default function DayEditor({
                     onChange={(e) => patch({ dayType: e.target.value as DayData["dayType"] })}>
               {DAY_TYPES.map((t) => <option key={t.value} value={t.value}>{locale === "ja" ? t.ja : t.en}</option>)}
             </select>
+            {draft.dayType === "SUB_OFF" && (
+              <p className="mt-1 text-[11px] text-emerald-600">
+                {locale === "ja" ? "精算の実働時間に加算されます（7.5h/日）。" : "Counted as 7.5h of billable hours for this day."}
+              </p>
+            )}
           </div>
         </div>
 
@@ -195,6 +200,13 @@ export default function DayEditor({
             <datalist id="leave-presets">
               {LEAVE_PRESETS.filter(Boolean).map((p) => <option key={p} value={p} />)}
             </datalist>
+            {draft.leaveNote?.includes("代休") && (
+              <p className="mt-1 text-[11px] text-emerald-600">
+                {locale === "ja"
+                  ? "代休は前月の休日出勤の振替として、精算の実働時間にそのまま加算されます（7.5h/日）。"
+                  : "Substitute holiday (代休) days still count toward billable hours (7.5h/day), since they compensate for weekend/holiday work done in a prior month."}
+              </p>
+            )}
           </div>
           <div>
             <label className="label">{t("timesheetNoteLabel")}</label>
