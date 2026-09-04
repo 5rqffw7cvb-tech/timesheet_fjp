@@ -12,12 +12,38 @@ import {
 import { requireAdmin, hashPassword } from "@/lib/auth";
 import { ymd } from "@/lib/dates";
 import { normalizeBillingCurrency } from "@/lib/currency";
+import { loadTimelineSlice, type MonthKey, type TimelineSlice } from "@/lib/budgetTimeline";
 
 export interface ActionResult { ok: boolean; error?: string; message?: string; id?: string }
 
 const fail = (error: string): ActionResult => ({ ok: false, error });
 
 /* ─────────────────────────── Budget ─────────────────────────── */
+
+export type TimelineSliceResult =
+  | ({ ok: true } & TimelineSlice)
+  | { ok: false; error: string };
+
+/**
+ * Nạp thêm các tháng khi timeline được cuộn ngang — chỉ trả về đúng dải tháng
+ * được yêu cầu, phần đã hiển thị giữ nguyên ở client.
+ */
+export async function loadBudgetTimelineAction(
+  projectId: string,
+  months: MonthKey[],
+): Promise<TimelineSliceResult> {
+  await requireAdmin();
+  if (!projectId) return { ok: false, error: "Missing project" };
+  if (!Array.isArray(months) || months.length === 0 || months.length > 36) {
+    return { ok: false, error: "Invalid month range" };
+  }
+  for (const m of months) {
+    if (!Number.isInteger(m?.year) || m.year < 2000 || m.year > 2100) return { ok: false, error: "Invalid year" };
+    if (!Number.isInteger(m?.month) || m.month < 1 || m.month > 12) return { ok: false, error: "Invalid month" };
+  }
+  const slice = await loadTimelineSlice(projectId, months);
+  return { ok: true, ...slice };
+}
 
 export async function setBudgetAction(
   userId: string,
