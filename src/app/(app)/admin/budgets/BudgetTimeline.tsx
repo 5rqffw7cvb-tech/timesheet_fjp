@@ -2,9 +2,7 @@
 
 import { Fragment, useCallback, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import {
-  loadBudgetTimelineAction, setBudgetAction, setAssignmentPeriodAction,
-} from "@/actions/admin";
+import { loadBudgetTimelineAction, setBudgetAction } from "@/actions/admin";
 import { shiftMonth } from "@/lib/dates";
 import { currencySymbol, type BillingCurrency } from "@/lib/currency";
 import { containsText } from "@/lib/tableUi";
@@ -67,10 +65,6 @@ export default function BudgetTimeline({
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [rateEdits, setRateEdits] = useState<Record<string, number>>({});
   const [rateDirty, setRateDirty] = useState<Set<string>>(new Set());
-  const [periods, setPeriods] = useState<Record<string, { startDate: string | null; endDate: string | null }>>(
-    Object.fromEntries(members.map((m) => [m.userId, { startDate: m.startDate, endDate: m.endDate }])),
-  );
-  const [savingPeriod, setSavingPeriod] = useState<Set<string>>(new Set());
   const [extraMembers, setExtraMembers] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [q, setQ] = useState("");
@@ -237,18 +231,6 @@ export default function BudgetTimeline({
     });
   }
 
-  function savePeriod(userId: string, field: "startDate" | "endDate", value: string) {
-    const current = periods[userId] ?? { startDate: null, endDate: null };
-    const next = { ...current, [field]: value || null };
-    setPeriods((s) => ({ ...s, [userId]: next }));
-    setSavingPeriod((s) => new Set(s).add(userId));
-    startTransition(async () => {
-      const res = await setAssignmentPeriodAction(userId, projectId, next.startDate, next.endDate);
-      setSavingPeriod((s) => { const n = new Set(s); n.delete(userId); return n; });
-      if (!res.ok) setMsg(res.error ?? (ja ? "エラー" : "Error"));
-    });
-  }
-
   function selectProject(id: string) {
     const p = new URLSearchParams(params.toString());
     p.set("project", id);
@@ -333,21 +315,25 @@ export default function BudgetTimeline({
             </thead>
             <tbody>
               {visibleRows.map((m) => {
-                const isOpen = expanded.has(m.userId);
-                const period = periods[m.userId] ?? { startDate: m.startDate, endDate: m.endDate };
+                const isOpen = expanded.has(m.userId) && canSeeMoney;
+                const period = { startDate: m.startDate, endDate: m.endDate };
                 const rate = rateEdits[m.userId] ?? m.unitPriceMm;
                 return (
                   <Fragment key={m.userId}>
                     <tr>
                       <td className="sticky left-0 z-20 border-r border-slate-200 bg-white align-top" style={{ minWidth: NAME_W, width: NAME_W }}>
                         <div className="flex items-start gap-2">
-                          <button
-                            className="mt-0.5 text-slate-400 hover:text-slate-600"
-                            onClick={() => toggleExpand(m.userId)}
-                            aria-label={ja ? "詳細" : "Details"}
-                          >
-                            {isOpen ? "▾" : "▸"}
-                          </button>
+                          {canSeeMoney ? (
+                            <button
+                              className="mt-0.5 text-slate-400 hover:text-slate-600"
+                              onClick={() => toggleExpand(m.userId)}
+                              aria-label={ja ? "単価" : "Unit price"}
+                            >
+                              {isOpen ? "▾" : "▸"}
+                            </button>
+                          ) : (
+                            <span className="mt-0.5 w-3" />
+                          )}
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-slate-700">{m.fullName}</span>
@@ -360,9 +346,8 @@ export default function BudgetTimeline({
                             <div className="text-xs text-slate-400">{m.roleTitle ?? "—"}</div>
                           </div>
                         </div>
-                        {isOpen && (
-                          <div className="mt-2 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-                            {canSeeMoney && (
+                        {isOpen && canSeeMoney && (
+                          <div className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2">
                               <div>
                                 <div className="label mb-1">
                                   {canEdit
@@ -384,36 +369,6 @@ export default function BudgetTimeline({
                                   </div>
                                 )}
                               </div>
-                            )}
-                            <div>
-                              <div className="label mb-1">
-                                {ja ? "アサイン期間（空欄=無制限）" : "Assigned period (blank = no limit)"}
-                              </div>
-                              {canEdit ? (
-                                <div className="flex items-center gap-1">
-                                  <input
-                                    type="date"
-                                    className="input w-[124px] text-xs"
-                                    value={period.startDate ?? ""}
-                                    onChange={(e) => savePeriod(m.userId, "startDate", e.target.value)}
-                                  />
-                                  <span className="text-slate-300">–</span>
-                                  <input
-                                    type="date"
-                                    className="input w-[124px] text-xs"
-                                    value={period.endDate ?? ""}
-                                    onChange={(e) => savePeriod(m.userId, "endDate", e.target.value)}
-                                  />
-                                  {savingPeriod.has(m.userId) && (
-                                    <span className="text-[10px] text-slate-400">{ja ? "保存中…" : "saving…"}</span>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="num text-sm text-slate-700">
-                                  {period.startDate ?? "—"} – {period.endDate ?? (ja ? "継続中" : "ongoing")}
-                                </div>
-                              )}
-                            </div>
                           </div>
                         )}
                       </td>
