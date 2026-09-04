@@ -55,6 +55,23 @@ export interface TimelineSlice {
   cells: Record<string, TimelineCell>;
 }
 
+/**
+ * Bỏ đơn giá khỏi dữ liệu timeline trước khi gửi xuống client (PM không được
+ * xem tiền) — ẩn ở UI thôi thì payload của trang vẫn còn số.
+ */
+export function stripTimelineMoney<T extends { cells: Record<string, TimelineCell> }>(slice: T): T {
+  return {
+    ...slice,
+    cells: Object.fromEntries(
+      Object.entries(slice.cells).map(([k, c]) => [k, { ...c, unitPriceMm: 0 }]),
+    ),
+  };
+}
+
+export function stripMemberMoney(members: TimelineMember[]): TimelineMember[] {
+  return members.map((m) => ({ ...m, unitPriceMm: 0 }));
+}
+
 export function monthKeyOf(year: number, month: number) {
   return `${year}-${String(month).padStart(2, "0")}`;
 }

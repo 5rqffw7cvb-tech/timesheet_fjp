@@ -13,6 +13,7 @@ import ProjectPickerModal, { type ProjectOption } from "@/components/ProjectPick
 
 export default function ExportPanel({
   year, month, rows, workingDays, selectedPeriods, selectedProjectIds, projects, billingCurrency,
+  canSeeMoney,
 }: {
   year: number;
   month: number;
@@ -22,6 +23,8 @@ export default function ExportPanel({
   selectedProjectIds: string[];
   projects: { id: string; code: string; name: string }[];
   billingCurrency: BillingCurrency;
+  /** false = PM: ẩn toàn bộ billing (調整額, 単価, file billing). */
+  canSeeMoney: boolean;
 }) {
   const moneyUnit = currencySymbol(billingCurrency);
   const router = useRouter();
@@ -243,14 +246,18 @@ export default function ExportPanel({
         <MonthNav year={year} month={month} />
           <span className="text-sm text-slate-500">{locale === "ja" ? `承認済み ${approved.length}/${rows.length} · 所定日数 ${workingDays}` : `Approved ${approved.length}/${rows.length} · working days ${workingDays}`}</span>
         <div className="ml-auto flex gap-2">
-          <button className="btn-secondary" disabled={busy !== null || withData.length === 0}
-                  onClick={() => download(billingUrl("all"), "billing-all")}>
-            {busy === "billing-all" ? t("loading") : `${t("downloadBilling")} (${t("all")})`}
-          </button>
-          <button className="btn-secondary" disabled={busy !== null || approved.length === 0}
-                  onClick={() => download(billingUrl("approved"), "billing-approved")}>
-            {busy === "billing-approved" ? t("loading") : `${t("downloadBilling")} (${t("statusApproved")})`}
-          </button>
+          {canSeeMoney && (
+            <>
+              <button className="btn-secondary" disabled={busy !== null || withData.length === 0}
+                      onClick={() => download(billingUrl("all"), "billing-all")}>
+                {busy === "billing-all" ? t("loading") : `${t("downloadBilling")} (${t("all")})`}
+              </button>
+              <button className="btn-secondary" disabled={busy !== null || approved.length === 0}
+                      onClick={() => download(billingUrl("approved"), "billing-approved")}>
+                {busy === "billing-approved" ? t("loading") : `${t("downloadBilling")} (${t("statusApproved")})`}
+              </button>
+            </>
+          )}
           <button className="btn-secondary" disabled={busy !== null || withData.length === 0 || !isWeeklyCompatible}
                   onClick={() => download(`/api/export?year=${year}&month=${month}&scope=all`, "all")}>
             {busy === "all" ? t("loading") : (locale === "ja" ? `データあり全件ダウンロード (${withData.length})` : `Download all with data (${withData.length})`)}
@@ -278,9 +285,12 @@ export default function ExportPanel({
         <Metric label={locale === "ja" ? "データありメンバー" : "Members with data"} value={String(withData.length)} />
         <Metric label={locale === "ja" ? "140h×係数未満" : "Under 140h×factor"} value={String(totals.under)} tone={totals.under ? "warn" : "ok"} />
         <Metric label={locale === "ja" ? "180h×係数超過" : "Over 180h×factor"} value={String(totals.over)} tone={totals.over ? "warn" : "ok"} />
-        <Metric label={`${locale === "ja" ? "調整金額" : "Adjustment total"} (${moneyUnit})`} value={totals.amount.toLocaleString(locale === "ja" ? "ja-JP" : "en-US")} />
+        {canSeeMoney && (
+          <Metric label={`${locale === "ja" ? "調整金額" : "Adjustment total"} (${moneyUnit})`} value={totals.amount.toLocaleString(locale === "ja" ? "ja-JP" : "en-US")} />
+        )}
       </div>
 
+      {canSeeMoney && (
       <div className="card overflow-hidden">
         <div className="card-header">
           <h2 className="card-title">{locale === "ja" ? "140/180ルールの調整ダッシュボード" : "140/180 adjustment dashboard"}</h2>
@@ -332,6 +342,7 @@ export default function ExportPanel({
           </tbody>
         </table>
       </div>
+      )}
 
       <div className="card overflow-hidden">
         <div className="card-header">

@@ -13,13 +13,14 @@ interface Member {
   id: string; username: string; fullName: string; displayName: string | null;
   employeeCode: string | null; roleTitle: string | null; location: string | null;
   billingUnitPrice: number; billingFactor: number;
-  role: "ADMIN" | "MEMBER"; isActive: boolean; companyId: string | null; mustChangePw: boolean;
+  role: "ADMIN" | "MEMBER"; managerLevel: "NONE" | "PM" | "DM";
+  isActive: boolean; companyId: string | null; mustChangePw: boolean;
 }
 
 const EMPTY: Omit<Member, "id" | "isActive" | "mustChangePw"> = {
   username: "", fullName: "", displayName: "", employeeCode: "",
   roleTitle: "", location: "日本", billingUnitPrice: 0, billingFactor: 1,
-  role: "MEMBER", companyId: null,
+  role: "MEMBER", managerLevel: "NONE", companyId: null,
 };
 
 export default function MemberTable({
@@ -143,6 +144,9 @@ export default function MemberTable({
                     ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-600"}`}>
                     {m.role === "ADMIN" ? t("adminRole") : t("memberRole")}
                   </span>
+                  {m.role !== "ADMIN" && m.managerLevel !== "NONE" && (
+                    <span className="badge ml-1 bg-emerald-100 text-emerald-700">{m.managerLevel}</span>
+                  )}
                 </td>
                 <td>
                   {m.mustChangePw && <span className="badge bg-amber-100 text-amber-700">{locale === "ja" ? "PW未変更" : "Password not changed"}</span>}
@@ -189,6 +193,7 @@ function MemberForm({
     billingUnitPrice: member?.billingUnitPrice ?? 0,
     billingFactor: member?.billingFactor ?? 1,
     role: member?.role ?? ("MEMBER" as "ADMIN" | "MEMBER"),
+    managerLevel: member?.managerLevel ?? ("NONE" as "NONE" | "PM" | "DM"),
     companyId: member?.companyId ?? companies[0]?.id ?? "",
   });
   const [password, setPassword] = useState("Fpt@123456");
@@ -274,6 +279,19 @@ function MemberForm({
             <option value="MEMBER">{t("memberRole")}</option>
             <option value="ADMIN">{t("adminRole")}</option>
           </select>
+        </Field>
+        <Field label={locale === "ja" ? "管理権限（PJ単位）" : "Project management rights"}>
+          <select className="select" value={form.managerLevel} onChange={(e) => set("managerLevel", e.target.value)}
+                  disabled={form.role === "ADMIN"}>
+            <option value="NONE">{locale === "ja" ? "なし" : "None"}</option>
+            <option value="PM">{locale === "ja" ? "PM — 担当PJを閲覧のみ" : "PM — view own projects only"}</option>
+            <option value="DM">{locale === "ja" ? "DM — 閲覧＋承認＋金額" : "DM — view + approve + money"}</option>
+          </select>
+          <p className="mt-1 text-[11px] leading-snug text-slate-400">
+            {locale === "ja"
+              ? "自分がアサインされているPJのメンバーだけを、追跡・承認・予算・週報出力で閲覧できます。予算や設定の編集は管理者のみ。"
+              : "Sees tracking / approvals / budget / export limited to members of the projects they are assigned to. Editing budgets and settings stays admin-only."}
+          </p>
         </Field>
         {!member && (
           <Field label={locale === "ja" ? "初期パスワード" : "Initial password"}>

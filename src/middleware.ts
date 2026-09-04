@@ -19,7 +19,14 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (pathname.startsWith("/admin") && session.role !== "ADMIN") {
+  // Các màn hình theo dõi mà PM/DM cũng vào được. Session token không mang
+  // managerLevel (đổi quyền là có hiệu lực ngay, không cần đăng nhập lại) nên
+  // ở đây chỉ mở đường; requireAdminView() trong từng page mới quyết định
+  // được vào hay không và giới hạn dữ liệu theo project.
+  const MANAGER_PATHS = ["/admin", "/admin/approvals", "/admin/budgets", "/admin/export"];
+  const managerArea = MANAGER_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+
+  if (pathname.startsWith("/admin") && session.role !== "ADMIN" && !managerArea) {
     const url = req.nextUrl.clone();
     url.pathname = "/timesheet";
     url.search = "";

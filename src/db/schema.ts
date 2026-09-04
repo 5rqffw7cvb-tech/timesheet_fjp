@@ -9,6 +9,13 @@ export const roleEnum = pgEnum("role", ["ADMIN", "MEMBER"]);
 export const reportStatusEnum = pgEnum("report_status", [
   "DRAFT", "SUBMITTED", "APPROVED", "REJECTED",
 ]);
+/**
+ * Quyền quản lý dự án của một member (ngoài role ADMIN/MEMBER):
+ * PM = xem dữ liệu project mình được assign (không thấy tiền, không duyệt),
+ * DM = xem + duyệt timesheet + thấy 単価/billing của project đó.
+ */
+export const managerLevelEnum = pgEnum("manager_level", ["NONE", "PM", "DM"]);
+
 /** WORK = ngày làm việc, PUBLIC_OFF = 公休, SUB_OFF = 代休, HOLIDAY_WORK = 公出 */
 export const dayTypeEnum = pgEnum("day_type", [
   "WORK", "PUBLIC_OFF", "SUB_OFF", "HOLIDAY_WORK",
@@ -98,6 +105,7 @@ export const users = pgTable(
     billingUnitPrice: numeric("billing_unit_price", { precision: 12, scale: 2 }).notNull().default("0"),
     billingFactor: numeric("billing_factor", { precision: 6, scale: 2 }).notNull().default("1"),
     role: roleEnum("role").notNull().default("MEMBER"),
+    managerLevel: managerLevelEnum("manager_level").notNull().default("NONE"),
     isActive: boolean("is_active").notNull().default(true),
     mustChangePw: boolean("must_change_pw").notNull().default(true),
     companyId: text("company_id").references(() => companies.id),

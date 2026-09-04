@@ -50,6 +50,13 @@
       "when": 1788231600000,
       "tag": "0006_project_assignment_period",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788235200000,
+      "tag": "0007_manager_level",
+      "breakpoints": true
     }
   ]
 }

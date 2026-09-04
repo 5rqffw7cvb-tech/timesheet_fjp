@@ -38,6 +38,7 @@ const EMPTY_CELL: TimelineCell = {
  */
 export default function BudgetTimeline({
   anchor, projects, projectId, initialMonths, initialCells, members, allMembers, billingCurrency,
+  canEdit, canSeeMoney,
 }: {
   anchor: MonthKey;
   projects: { id: string; code: string; name: string }[];
@@ -47,6 +48,10 @@ export default function BudgetTimeline({
   members: TimelineMember[];
   allMembers: Simple[];
   billingCurrency: BillingCurrency;
+  /** false = PM/DM chỉ xem: mọi ô nhập chuyển thành text, không có nút lưu. */
+  canEdit: boolean;
+  /** false = PM: ẩn 単価. */
+  canSeeMoney: boolean;
 }) {
   const { t, locale } = useLocale();
   const ja = locale === "ja";
@@ -269,9 +274,13 @@ export default function BudgetTimeline({
           {ja ? `${anchor.year}年${String(anchor.month).padStart(2, "0")}月へ` : `Go to ${anchor.year}/${String(anchor.month).padStart(2, "0")}`}
         </button>
         <span className="text-xs text-slate-500">
-          {ja
-            ? `月ごとの工数（0.5 / 1.0 / 1.2…）を入力。承認済みの月は実績を下に表示（実績 < 工数 は緑、超過は赤）。左右にスクロールすると過去・未来の月を読み込みます。`
-            : `Enter the monthly effort (0.5 / 1.0 / 1.2…). Approved months show the actual below (green when actual < budget, red when over). Scroll sideways to load past / future months.`}
+          {canEdit
+            ? (ja
+              ? `月ごとの工数（0.5 / 1.0 / 1.2…）を入力。承認済みの月は実績を下に表示（実績 < 工数 は緑、超過は赤）。左右にスクロールすると過去・未来の月を読み込みます。`
+              : `Enter the monthly effort (0.5 / 1.0 / 1.2…). Approved months show the actual below (green when actual < budget, red when over). Scroll sideways to load past / future months.`)
+            : (ja
+              ? `担当プロジェクトの工数と実績（承認済みの月のみ）。実績 < 工数 は緑、超過は赤。左右にスクロールすると過去・未来の月を読み込みます。`
+              : `Effort and actuals (approved months only) for your projects. Green when actual < budget, red when over. Scroll sideways to load past / future months.`)}
         </span>
         <div className="ml-auto flex items-center gap-2">
           <input
@@ -281,9 +290,15 @@ export default function BudgetTimeline({
             onChange={(e) => setQ(e.target.value)}
           />
           {msg && <span className="text-xs text-slate-500">{msg}</span>}
-          <button className="btn-primary" onClick={saveAll} disabled={busy || pendingCount === 0}>
-            {busy ? t("saving") : `${t("save")}${pendingCount ? ` (${pendingCount})` : ""}`}
-          </button>
+          {canEdit ? (
+            <button className="btn-primary" onClick={saveAll} disabled={busy || pendingCount === 0}>
+              {busy ? t("saving") : `${t("save")}${pendingCount ? ` (${pendingCount})` : ""}`}
+            </button>
+          ) : (
+            <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
+              {ja ? "閲覧のみ" : "View only"}
+            </span>
+          )}
         </div>
       </div>
 
@@ -347,41 +362,57 @@ export default function BudgetTimeline({
                         </div>
                         {isOpen && (
                           <div className="mt-2 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-2">
-                            <div>
-                              <div className="label mb-1">
-                                {ja ? `単価（${moneyUnit}/MM・${anchor.year}/${String(anchor.month).padStart(2, "0")}から適用）`
-                                    : `Unit price (${moneyUnit}/MM, applies from ${anchor.year}/${String(anchor.month).padStart(2, "0")})`}
+                            {canSeeMoney && (
+                              <div>
+                                <div className="label mb-1">
+                                  {canEdit
+                                    ? (ja ? `単価（${moneyUnit}/MM・${anchor.year}/${String(anchor.month).padStart(2, "0")}から適用）`
+                                          : `Unit price (${moneyUnit}/MM, applies from ${anchor.year}/${String(anchor.month).padStart(2, "0")})`)
+                                    : (ja ? `単価（${moneyUnit}/MM）` : `Unit price (${moneyUnit}/MM)`)}
+                                </div>
+                                {canEdit ? (
+                                  <input
+                                    type="number" min={0} step={1000}
+                                    className={`input num w-40 text-right ${rateDirty.has(m.userId) ? "border-brand-400 bg-brand-50" : ""}`}
+                                    value={rate === 0 ? "" : rate}
+                                    placeholder={moneyUnit}
+                                    onChange={(e) => setRate(m.userId, Number(e.target.value) || 0)}
+                                  />
+                                ) : (
+                                  <div className="num text-sm text-slate-700">
+                                    {rate > 0 ? rate.toLocaleString(ja ? "ja-JP" : "en-US") : "—"}
+                                  </div>
+                                )}
                               </div>
-                              <input
-                                type="number" min={0} step={1000}
-                                className={`input num w-40 text-right ${rateDirty.has(m.userId) ? "border-brand-400 bg-brand-50" : ""}`}
-                                value={rate === 0 ? "" : rate}
-                                placeholder={moneyUnit}
-                                onChange={(e) => setRate(m.userId, Number(e.target.value) || 0)}
-                              />
-                            </div>
+                            )}
                             <div>
                               <div className="label mb-1">
                                 {ja ? "アサイン期間（空欄=無制限）" : "Assigned period (blank = no limit)"}
                               </div>
-                              <div className="flex items-center gap-1">
-                                <input
-                                  type="date"
-                                  className="input w-[124px] text-xs"
-                                  value={period.startDate ?? ""}
-                                  onChange={(e) => savePeriod(m.userId, "startDate", e.target.value)}
-                                />
-                                <span className="text-slate-300">–</span>
-                                <input
-                                  type="date"
-                                  className="input w-[124px] text-xs"
-                                  value={period.endDate ?? ""}
-                                  onChange={(e) => savePeriod(m.userId, "endDate", e.target.value)}
-                                />
-                                {savingPeriod.has(m.userId) && (
-                                  <span className="text-[10px] text-slate-400">{ja ? "保存中…" : "saving…"}</span>
-                                )}
-                              </div>
+                              {canEdit ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    type="date"
+                                    className="input w-[124px] text-xs"
+                                    value={period.startDate ?? ""}
+                                    onChange={(e) => savePeriod(m.userId, "startDate", e.target.value)}
+                                  />
+                                  <span className="text-slate-300">–</span>
+                                  <input
+                                    type="date"
+                                    className="input w-[124px] text-xs"
+                                    value={period.endDate ?? ""}
+                                    onChange={(e) => savePeriod(m.userId, "endDate", e.target.value)}
+                                  />
+                                  {savingPeriod.has(m.userId) && (
+                                    <span className="text-[10px] text-slate-400">{ja ? "保存中…" : "saving…"}</span>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="num text-sm text-slate-700">
+                                  {period.startDate ?? "—"} – {period.endDate ?? (ja ? "継続中" : "ongoing")}
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}
@@ -397,13 +428,19 @@ export default function BudgetTimeline({
                             className={`align-top ${mo.key === anchorKey ? "bg-brand-50/60" : outside ? "bg-slate-50/80" : ""}`}
                             style={{ minWidth: COL_W, width: COL_W }}
                           >
-                            <input
-                              type="number" min={0} step={0.1}
-                              className={`input num w-full text-right ${dirty.has(key) ? "border-brand-400 bg-brand-50" : ""}`}
-                              value={effort === 0 ? "" : effort}
-                              placeholder={ja ? "工数" : "effort"}
-                              onChange={(e) => setEffort(m.userId, mo.key, Number(e.target.value) || 0)}
-                            />
+                            {canEdit ? (
+                              <input
+                                type="number" min={0} step={0.1}
+                                className={`input num w-full text-right ${dirty.has(key) ? "border-brand-400 bg-brand-50" : ""}`}
+                                value={effort === 0 ? "" : effort}
+                                placeholder={ja ? "工数" : "effort"}
+                                onChange={(e) => setEffort(m.userId, mo.key, Number(e.target.value) || 0)}
+                              />
+                            ) : (
+                              <div className="num py-1.5 pr-1 text-right text-sm text-slate-700">
+                                {effort > 0 ? effort.toFixed(2) : <span className="text-slate-300">—</span>}
+                              </div>
+                            )}
                             <ActualLine cell={cell} effort={effort} ja={ja} />
                           </td>
                         );
@@ -449,25 +486,29 @@ export default function BudgetTimeline({
         </div>
 
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-200 px-4 py-2 text-xs text-slate-500">
-          <select
-            className="select w-64"
-            value=""
-            onChange={(e) => {
-              if (!e.target.value) return;
-              setExtraMembers((s) => [...s, e.target.value]);
-              e.target.value = "";
-            }}
-          >
-            <option value="">+ {ja ? "メンバーを追加" : "Add member"}</option>
-            {allMembers
-              .filter((a) => !rows.some((r) => r.userId === a.userId))
-              .map((a) => <option key={a.userId} value={a.userId}>{a.fullName}</option>)}
-          </select>
-          <span>
-            {ja
-              ? "工数 > 0 で保存するとこのPJにアサインされます。"
-              : "Saving an effort > 0 assigns the member to this project."}
-          </span>
+          {canEdit && (
+            <>
+              <select
+                className="select w-64"
+                value=""
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  setExtraMembers((s) => [...s, e.target.value]);
+                  e.target.value = "";
+                }}
+              >
+                <option value="">+ {ja ? "メンバーを追加" : "Add member"}</option>
+                {allMembers
+                  .filter((a) => !rows.some((r) => r.userId === a.userId))
+                  .map((a) => <option key={a.userId} value={a.userId}>{a.fullName}</option>)}
+              </select>
+              <span>
+                {ja
+                  ? "工数 > 0 で保存するとこのPJにアサインされます。"
+                  : "Saving an effort > 0 assigns the member to this project."}
+              </span>
+            </>
+          )}
           <span className="ml-auto flex items-center gap-3">
             <span className="font-bold text-emerald-600">{ja ? "実績 < 工数" : "actual < budget"}</span>
             <span className="font-bold text-rose-600">{ja ? "実績 ≥ 工数" : "actual ≥ budget"}</span>

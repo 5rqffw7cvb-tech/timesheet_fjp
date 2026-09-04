@@ -13,12 +13,14 @@ import { WEEKDAY_VI, minToHHMM } from "@/lib/dates";
 import { sortRows, toggleSort, type SortState, containsText } from "@/lib/tableUi";
 
 export default function ApprovalPanel({
-  year, month, rows, selectedId, detail,
+  year, month, rows, selectedId, detail, canApprove,
 }: {
   year: number; month: number;
   rows: OverviewRow[];
   selectedId: string | null;
   detail: MonthData | null;
+  /** false = PM: chỉ xem, mọi nút 承認・差戻し・再オープン đều ẩn. */
+  canApprove: boolean;
 }) {
   const router = useRouter();
   const { t, locale } = useLocale();
@@ -96,10 +98,16 @@ export default function ApprovalPanel({
         <div className="ml-auto flex items-center gap-2">
           <input className="input w-64" placeholder={t("approvalSearchPlaceholder")} value={q} onChange={(e) => setQ(e.target.value)} />
           {msg && <span className="text-xs text-slate-500">{msg}</span>}
-          <button className="btn-success" disabled={busy || checked.size === 0}
-                  onClick={approveChecked}>
-            {locale === "ja" ? "一括締め" : "Approve"} {checked.size > 0 ? `(${checked.size})` : ""}
-          </button>
+          {canApprove ? (
+            <button className="btn-success" disabled={busy || checked.size === 0}
+                    onClick={approveChecked}>
+              {locale === "ja" ? "一括締め" : "Approve"} {checked.size > 0 ? `(${checked.size})` : ""}
+            </button>
+          ) : (
+            <span className="rounded border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-500">
+              {locale === "ja" ? "閲覧のみ" : "View only"}
+            </span>
+          )}
         </div>
       </div>
 
@@ -107,16 +115,18 @@ export default function ApprovalPanel({
         <div className="card overflow-hidden">
           <div className="card-header">
             <h2 className="card-title">{t("approvalMemberTitle")}</h2>
-            <button className="btn-ghost btn-sm"
-                    onClick={() => setChecked(new Set(pending.map((p) => p.userId)))}>
-              {t("approvalSelectAll")}
-            </button>
+            {canApprove && (
+              <button className="btn-ghost btn-sm"
+                      onClick={() => setChecked(new Set(pending.map((p) => p.userId)))}>
+                {t("approvalSelectAll")}
+              </button>
+            )}
           </div>
           <div className="max-h-[640px] overflow-y-auto">
             <table className="data">
               <thead>
                 <tr>
-                  <th></th>
+                  {canApprove && <th></th>}
                   <th><button onClick={() => setSort(toggleSort(sort, "fullName"))}>{t("membersTitle")}</button></th>
                   <th className="text-right"><button onClick={() => setSort(toggleSort(sort, "usedHours"))} className="text-right">{t("timesheetHours")}</button></th>
                   <th><button onClick={() => setSort(toggleSort(sort, "status"))}>{t("membersStatus")}</button></th>
@@ -125,16 +135,18 @@ export default function ApprovalPanel({
               <tbody>
                 {filteredRows.map((r) => (
                   <tr key={r.userId} className={r.userId === selectedId ? "bg-brand-50" : ""}>
-                    <td>
-                      <input type="checkbox" className="h-4 w-4 accent-brand-600"
-                             disabled={r.status !== "SUBMITTED"}
-                             checked={checked.has(r.userId)}
-                             onChange={(e) => setChecked((s) => {
-                               const n = new Set(s);
-                               e.target.checked ? n.add(r.userId) : n.delete(r.userId);
-                               return n;
-                             })} />
-                    </td>
+                    {canApprove && (
+                      <td>
+                        <input type="checkbox" className="h-4 w-4 accent-brand-600"
+                               disabled={r.status !== "SUBMITTED"}
+                               checked={checked.has(r.userId)}
+                               onChange={(e) => setChecked((s) => {
+                                 const n = new Set(s);
+                                 e.target.checked ? n.add(r.userId) : n.delete(r.userId);
+                                 return n;
+                               })} />
+                      </td>
+                    )}
                     <td>
                       <button className="text-left" onClick={() => select(r.userId)}>
                         <div className="font-medium text-slate-700">{r.fullName}</div>
@@ -146,7 +158,7 @@ export default function ApprovalPanel({
                   </tr>
                 ))}
                 {filteredRows.length === 0 && (
-                  <tr><td colSpan={4} className="py-8 text-center text-slate-400">{t("noData")}</td></tr>
+                  <tr><td colSpan={canApprove ? 4 : 3} className="py-8 text-center text-slate-400">{t("noData")}</td></tr>
                 )}
               </tbody>
             </table>
@@ -199,22 +211,24 @@ export default function ApprovalPanel({
                   </div>
                 )}
 
-                <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
-                  <input className="input flex-1" placeholder={t("approvalNotesPlaceholder")}
-                         value={note} onChange={(e) => setNote(e.target.value)} />
-                  {selected.status === "APPROVED" ? (
-                    <button className="btn-secondary" onClick={reopen} disabled={busy}>{t("statusOpen")}</button>
-                  ) : (
-                    <>
-                      <button className="btn-danger" onClick={() => decide("REJECTED")} disabled={busy}>
-                        {t("statusRejected")}
-                      </button>
-                      <button className="btn-success" onClick={() => decide("APPROVED")} disabled={busy}>
-                        {t("statusClosed")}
-                      </button>
-                    </>
-                  )}
-                </div>
+                {canApprove && (
+                  <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
+                    <input className="input flex-1" placeholder={t("approvalNotesPlaceholder")}
+                           value={note} onChange={(e) => setNote(e.target.value)} />
+                    {selected.status === "APPROVED" ? (
+                      <button className="btn-secondary" onClick={reopen} disabled={busy}>{t("statusOpen")}</button>
+                    ) : (
+                      <>
+                        <button className="btn-danger" onClick={() => decide("REJECTED")} disabled={busy}>
+                          {t("statusRejected")}
+                        </button>
+                        <button className="btn-success" onClick={() => decide("APPROVED")} disabled={busy}>
+                          {t("statusClosed")}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
 
               {detail && <DayTable detail={detail} />}

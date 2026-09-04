@@ -273,6 +273,35 @@ function filterOverviewRows(rows: OverviewRow[], filterSet: Set<string> | null, 
     });
 }
 
+/**
+ * Giới hạn dữ liệu theo quyền của PM/DM: chỉ giữ member thuộc project họ quản
+ * lý, và trong mỗi member chỉ giữ phần 工数/実績 của đúng những project đó.
+ * projectIds = null (admin) thì trả nguyên vẹn.
+ */
+export function scopeRowsToProjects(
+  rows: OverviewRow[],
+  projectIds: string[] | null,
+  memberIds: string[] | null,
+): OverviewRow[] {
+  if (projectIds === null) return rows;
+  const allowedMembers = memberIds ? new Set(memberIds) : null;
+  const visible = allowedMembers ? rows.filter((r) => allowedMembers.has(r.userId)) : rows;
+  return filterOverviewRows(visible, new Set(projectIds), "all");
+}
+
+/**
+ * Xoá mọi số tiền khỏi dữ liệu trước khi gửi xuống client (PM không được xem
+ * 単価/billing). Phải làm ở server: ẩn bằng CSS thì dữ liệu vẫn nằm trong
+ * payload của trang.
+ */
+export function stripMoney(rows: OverviewRow[]): OverviewRow[] {
+  return rows.map((r) => ({
+    ...r,
+    billingUnitPrice: 0,
+    byProject: r.byProject.map((p) => ({ ...p, unitPriceMm: 0 })),
+  }));
+}
+
 export interface PeriodOverview {
   period: PeriodKey;
   rows: OverviewRow[];

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { currentAdminView, memberIdsForProjects, scopeProjectIds } from "@/lib/access";
 import { monthOverviewByPeriod } from "@/lib/adminData";
 import { buildBillingWorkbookWithLabel, billingFileName } from "@/lib/excel/billingReport";
 import { db } from "@/db";
@@ -14,7 +14,11 @@ function contentDisposition(name: string) {
 }
 
 export async function GET(req: Request) {
-  await requireAdmin();
+  // Billing = dữ liệu tiền -> chỉ admin và DM; PM không được tải.
+  const view = await currentAdminView();
+  if (!view?.canSeeMoney) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const url = new URL(req.url);
   const year = Number(url.searchParams.get("year"));
@@ -35,16 +39,22 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Missing or invalid month parameters. Use year/month or months=YYYY-MM,YYYY-MM" }, { status: 400 });
   }
 
-  const projectIds = projectIdsRaw
-    ? projectIdsRaw.split(",").map((s) => s.trim()).filter(Boolean)
-    : [];
+  const projectIds = scopeProjectIds(
+    view,
+    projectIdsRaw ? projectIdsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [],
+  );
 
   try {
-    const periodsData = await monthOverviewByPeriod(
+    const rawPeriods = await monthOverviewByPeriod(
       periods,
       projectIds,
       scope === "all" ? "all" : "approved",
     );
+    // DM chỉ được xuất member thuộc project mình phụ trách.
+    const allowedIds = view.projectIds ? await memberIdsForProjects(view.projectIds) : null;
+    const periodsData = allowedIds === null
+      ? rawPeriods
+      : rawPeriods.map((p) => ({ ...p, rows: p.rows.filter((r) => allowedIds.includes(r.userId)) }));
     const hasAnyData = periodsData.some((p) => p.rows.some((r) => r.usedHours > 0 || r.attendanceHours > 0));
 
     if (!hasAnyData) {

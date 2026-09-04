@@ -12,11 +12,25 @@ import {
 import { requireAdmin, hashPassword } from "@/lib/auth";
 import { ymd } from "@/lib/dates";
 import { normalizeBillingCurrency } from "@/lib/currency";
-import { loadTimelineSlice, type MonthKey, type TimelineSlice } from "@/lib/budgetTimeline";
+import {
+  loadTimelineSlice, stripTimelineMoney, type MonthKey, type TimelineSlice,
+} from "@/lib/budgetTimeline";
+import { canViewMember, canViewProject, currentAdminView } from "@/lib/access";
 
 export interface ActionResult { ok: boolean; error?: string; message?: string; id?: string }
 
 const fail = (error: string): ActionResult => ({ ok: false, error });
+
+/**
+ * Người được duyệt timesheet của `userId`: admin, hoặc DM mà member này thuộc
+ * project họ phụ trách. PM (chỉ xem) và member thường luôn bị từ chối.
+ */
+async function approverFor(userId: string) {
+  const view = await currentAdminView();
+  if (!view || !view.canApprove) return null;
+  if (!(await canViewMember(view, userId))) return null;
+  return view.user;
+}
 
 /* ─────────────────────────── Budget ─────────────────────────── */
 
@@ -32,8 +46,10 @@ export async function loadBudgetTimelineAction(
   projectId: string,
   months: MonthKey[],
 ): Promise<TimelineSliceResult> {
-  await requireAdmin();
+  const view = await currentAdminView();
+  if (!view) return { ok: false, error: "Forbidden" };
   if (!projectId) return { ok: false, error: "Missing project" };
+  if (!canViewProject(view, projectId)) return { ok: false, error: "Forbidden" };
   if (!Array.isArray(months) || months.length === 0 || months.length > 36) {
     return { ok: false, error: "Invalid month range" };
   }
@@ -41,7 +57,8 @@ export async function loadBudgetTimelineAction(
     if (!Number.isInteger(m?.year) || m.year < 2000 || m.year > 2100) return { ok: false, error: "Invalid year" };
     if (!Number.isInteger(m?.month) || m.month < 1 || m.month > 12) return { ok: false, error: "Invalid month" };
   }
-  const slice = await loadTimelineSlice(projectId, months);
+  const raw = await loadTimelineSlice(projectId, months);
+  const slice = view.canSeeMoney ? raw : stripTimelineMoney(raw);
   return { ok: true, ...slice };
 }
 
@@ -144,7 +161,8 @@ export async function reviewReportAction(
   userId: string, year: number, month: number,
   decision: "APPROVED" | "REJECTED", note: string,
 ): Promise<ActionResult> {
-  const admin = await requireAdmin();
+  const admin = await approverFor(userId);
+  if (!admin) return fail("You do not have permission to review this member.");
   const [report] = await db.select().from(monthlyReports).where(and(
     eq(monthlyReports.userId, userId),
     eq(monthlyReports.year, year),
@@ -176,7 +194,8 @@ export async function reviewReportAction(
 export async function reopenReportAction(
   userId: string, year: number, month: number, note: string,
 ): Promise<ActionResult> {
-  const admin = await requireAdmin();
+  const admin = await approverFor(userId);
+  if (!admin) return fail("You do not have permission to reopen this month.");
   const [report] = await db.select().from(monthlyReports).where(and(
     eq(monthlyReports.userId, userId),
     eq(monthlyReports.year, year),
@@ -199,7 +218,9 @@ export async function reopenReportAction(
 export async function bulkApproveAction(
   year: number, month: number, userIds: string[],
 ): Promise<ActionResult> {
-  const admin = await requireAdmin();
+  const view = await currentAdminView();
+  if (!view?.canApprove) return fail("You do not have permission to approve.");
+  const admin = view.user;
   if (userIds.length === 0) return fail("No members selected.");
   let n = 0;
   for (const userId of userIds) {
@@ -225,6 +246,8 @@ const memberSchema = z.object({
   billingFactor: z.coerce.number().min(0.1).max(10).default(1),
   companyId: z.string().optional(),
   role: z.enum(["ADMIN", "MEMBER"]),
+  /** PM = xem project mình phụ trách; DM = thêm quyền 承認 và xem 単価/billing. */
+  managerLevel: z.enum(["NONE", "PM", "DM"]).default("NONE"),
 });
 
 export async function createMemberAction(input: unknown, password: string): Promise<ActionResult> {

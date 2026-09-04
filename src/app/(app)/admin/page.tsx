@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
-import { monthOverview, monthWorkingDays } from "@/lib/adminData";
+import { requireAdminView, memberIdsForProjects } from "@/lib/access";
+import { monthOverview, monthWorkingDays, scopeRowsToProjects, stripMoney } from "@/lib/adminData";
 import { todayParts } from "@/lib/dates";
 import MonthNav from "@/components/MonthNav";
 import { calcBillingByProjects } from "@/lib/billing";
@@ -13,17 +13,19 @@ export const dynamic = "force-dynamic";
 export default async function AdminDashboard({
   searchParams,
 }: { searchParams: Promise<{ year?: string; month?: string }> }) {
-  await requireAdmin();
+  const view = await requireAdminView();
   const sp = await searchParams;
   const now = todayParts();
   const year = Number(sp.year) || now.year;
   const month = Number(sp.month) || now.month;
   const locale = await getLocale();
 
-  const [rows, workingDays] = await Promise.all([
+  const [allRows, workingDays, scopedMemberIds] = await Promise.all([
     monthOverview(year, month),
     monthWorkingDays(year, month),
+    view.projectIds ? memberIdsForProjects(view.projectIds) : Promise.resolve(null),
   ]);
+  const rows = scopeRowsToProjects(allRows, view.projectIds, scopedMemberIds);
 
   const totals = rows.reduce(
     (a, r) => ({
@@ -50,7 +52,9 @@ export default async function AdminDashboard({
         <Stat label={getMessage(locale, "dashboardSubmitted")} value={`${totals.submitted}/${rows.length}`} />
         <Stat label={getMessage(locale, "dashboardApproved")} value={`${totals.approved}/${rows.length}`} />
         <Stat label={getMessage(locale, "dashboardTotalHours")} value={totals.used.toFixed(1)} sub={` / ${totals.budget.toFixed(1)}h`} />
-        <Stat label={getMessage(locale, "dashboardBillingAdjust")} value={formatNumber(locale, billingTotal)} />
+        {view.canSeeMoney && (
+          <Stat label={getMessage(locale, "dashboardBillingAdjust")} value={formatNumber(locale, billingTotal)} />
+        )}
         <Stat label={getMessage(locale, "dashboardWorkingDays")} value={String(workingDays)} />
         <div className="ml-auto flex gap-2">
           <Link href={`/admin/budgets?year=${year}&month=${month}`} className="btn-secondary btn-sm">{getMessage(locale, "budgetTitle")}</Link>
@@ -59,7 +63,7 @@ export default async function AdminDashboard({
         </div>
       </div>
 
-      <AdminOverviewTable rows={rows} year={year} month={month} />
+      <AdminOverviewTable rows={view.canSeeMoney ? rows : stripMoney(rows)} year={year} month={month} />
     </div>
   );
 }

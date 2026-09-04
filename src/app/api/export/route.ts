@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { zipSync } from "fflate";
-import { requireAdmin, currentUser } from "@/lib/auth";
+import { currentUser } from "@/lib/auth";
+import { canViewMember, currentAdminView, memberIdsForProjects } from "@/lib/access";
 import { buildMemberReport } from "@/lib/excel/exportData";
 import { monthOverview } from "@/lib/adminData";
 
@@ -28,8 +29,15 @@ export async function GET(req: Request) {
   const me = await currentUser();
   if (!me) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
 
-  // member chỉ được tải file của chính mình
-  if (me.role !== "ADMIN" && userId !== me.id) {
+  // Member chỉ tải được file của chính mình; PM/DM tải được của member trong
+  // project mình phụ trách; admin tải được tất cả.
+  const view = await currentAdminView();
+  if (userId && userId !== me.id) {
+    if (!view || !(await canViewMember(view, userId))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
+  if (!userId && !view) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -55,10 +63,12 @@ export async function GET(req: Request) {
       });
     }
 
-    await requireAdmin();
+    // Xuất hàng loạt: admin lấy toàn bộ, PM/DM chỉ lấy member thuộc project họ.
+    const allowedIds = view!.projectIds ? await memberIdsForProjects(view!.projectIds) : null;
     const rows = await monthOverview(year, month);
     const targets = rows.filter((r) =>
-      scope === "all" ? r.usedHours > 0 || r.attendanceHours > 0 : r.status === "APPROVED",
+      (allowedIds === null || allowedIds.includes(r.userId))
+      && (scope === "all" ? r.usedHours > 0 || r.attendanceHours > 0 : r.status === "APPROVED"),
     );
     if (targets.length === 0) {
       return NextResponse.json(

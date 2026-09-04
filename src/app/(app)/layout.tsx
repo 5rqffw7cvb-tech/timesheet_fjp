@@ -26,10 +26,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/timesheet", label: getMessage(locale, "navMyTimesheet") },
   ];
 
+  // PM/DM: xem được các màn hình theo dõi như admin (dữ liệu bị giới hạn theo
+  // project họ được assign), nhưng không có Members / PJ・工種 / 設定.
+  const managerNav: NavItem[] = [
+    { href: "/admin", label: getMessage(locale, "navDashboard") },
+    { href: "/admin/approvals", label: getMessage(locale, "navApprovals") },
+    { href: "/admin/budgets", label: getMessage(locale, "navBudget") },
+    { href: "/admin/export", label: getMessage(locale, "navExport") },
+    ...memberNav,
+  ];
+
+  const nav = user.role === "ADMIN"
+    ? adminNav
+    : user.managerLevel === "NONE" ? memberNav : managerNav;
+
   return (
     <AppShell
       user={user}
-      nav={user.role === "ADMIN" ? adminNav : memberNav}
+      nav={nav}
       locale={locale}
     >
       {children}
