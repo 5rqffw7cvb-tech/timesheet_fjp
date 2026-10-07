@@ -4,7 +4,7 @@ import {
   budgets, dayLogs, monthlyReports, projects, projectAssignments, projectRates, timeEntries, users, monthSettings,
 } from "@/db/schema";
 import { daysInMonth, ymd, workedHours } from "./dates";
-import { defaultWorkingDays, monthRange } from "./period";
+import { defaultWorkingDays, isWorker, monthRange } from "./period";
 
 const HOURS_PER_CONG = 180;
 /** 1日の所定労働時間 — 代休を実働扱いにする際の換算に使う。 */
@@ -106,7 +106,7 @@ export async function monthOverview(year: number, month: number): Promise<Overvi
 
   const [memberRows, budgetRows, entryRows, logRows, reportRows, rateRows] = await Promise.all([
     db.select().from(users)
-      .where(and(eq(users.isActive, true), eq(users.role, "MEMBER")))
+      .where(isWorker)
       .orderBy(asc(users.fullName)),
     db.select({
       userId: budgets.userId, projectId: budgets.projectId,

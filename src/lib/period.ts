@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, lte, inArray, or, isNull } from "drizzle-orm";
+import { and, asc, eq, gte, lte, inArray, or, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   budgets, dayLogs, monthlyReports, projects, timeEntries, workTypes,
@@ -286,8 +286,21 @@ export async function ensureReport(userId: string, year: number, month: number) 
   return again;
 }
 
+/**
+ * Người chấm công: mọi MEMBER, cộng ADMIN kiêm member — tức admin đã được
+ * assign vào ít nhất 1 project. Account admin thuần (không assign) vẫn bị ẩn
+ * khỏi các danh sách member.
+ */
+export const isWorker = and(
+  eq(users.isActive, true),
+  or(
+    eq(users.role, "MEMBER"),
+    sql`exists (select 1 from ${projectAssignments} where ${projectAssignments.userId} = ${users.id})`,
+  ),
+);
+
 export async function activeMembers() {
   return db.select().from(users)
-    .where(and(eq(users.isActive, true), eq(users.role, "MEMBER")))
+    .where(isWorker)
     .orderBy(asc(users.fullName));
 }

@@ -187,7 +187,7 @@ export async function loadTimelineSlice(
 export interface TimelineMembers {
   /** Member đang/đã dính tới project (assign, có budget, hoặc đã ghi giờ). */
   members: TimelineMember[];
-  /** Toàn bộ member active — dùng cho dropdown "thêm メンバー" vào project. */
+  /** Toàn bộ user active (kể cả admin) — dùng cho dropdown "thêm メンバー" vào project. */
   allMembers: { userId: string; fullName: string; roleTitle: string | null }[];
 }
 
@@ -197,9 +197,10 @@ export interface TimelineMembers {
  */
 export async function loadTimelineMembers(projectId: string): Promise<TimelineMembers> {
   const [memberRows, assignmentRows, budgetRows, entryUserRows, rateRows] = await Promise.all([
+    // Không lọc role: admin kiêm member cũng phải thêm được vào project.
     db.select({ id: users.id, fullName: users.fullName, roleTitle: users.roleTitle })
       .from(users)
-      .where(and(eq(users.isActive, true), eq(users.role, "MEMBER")))
+      .where(eq(users.isActive, true))
       .orderBy(asc(users.fullName)),
     db.select({
       userId: projectAssignments.userId,

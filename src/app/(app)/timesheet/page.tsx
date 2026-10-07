@@ -17,9 +17,10 @@ export default async function TimesheetPage({
   const month = Number(sp.month) || now.month;
   const isAdmin = user.role === "ADMIN";
 
-  // Admin không tự chấm công nên không có timesheet của riêng mình — chọn
-  // xem/sửa timesheet của member qua ?user=<id>, mặc định là member đầu
-  // tiên. Member thường chỉ xem được của chính mình dù cố truyền query khác.
+  // Admin chọn xem/sửa timesheet của member qua ?user=<id>, mặc định là member
+  // đầu tiên. Admin kiêm member (đã assign vào project) cũng nằm trong danh
+  // sách này nên tự chọn chính mình để chấm công. Member thường chỉ xem được
+  // của chính mình dù cố truyền query khác.
   const members = isAdmin ? await activeMembers() : [];
   const requestedUserId = isAdmin ? sp.user : undefined;
   const viewingUser = isAdmin
