@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useLayoutEffect, useRef, useState, useTransition } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { loadBudgetTimelineAction, setBudgetAction } from "@/actions/admin";
 import { shiftMonth } from "@/lib/dates";
@@ -76,18 +76,25 @@ export default function BudgetTimeline({
   const loadingRef = useRef(false);
   const prependWidth = useRef<number | null>(null);
   const didInit = useRef(false);
+  /** Member vừa chọn ở dropdown "Add member" — focus vào ô 工数 tháng cơ sở. */
+  const [focusUserId, setFocusUserId] = useState<string | null>(null);
 
   /* ── dòng hiển thị ─────────────────────────────────────────── */
   const baseById = new Map(members.map((m) => [m.userId, m]));
   const simpleById = new Map(allMembers.map((m) => [m.userId, m]));
+  // Dòng vừa thêm (chưa lưu) nằm trên cùng, mới nhất trước — xếp lẫn theo
+  // tên thì dễ bị chìm giữa bảng và trông như chưa thêm được.
+  const addedRows: TimelineMember[] = extraMembers
+    .filter((id) => !baseById.has(id) && simpleById.has(id))
+    .reverse()
+    .map((id) => ({
+      ...simpleById.get(id)!, assigned: false, startDate: null, endDate: null, unitPriceMm: 0,
+    }));
+  const addedIds = new Set(addedRows.map((m) => m.userId));
   const rows: TimelineMember[] = [
-    ...members,
-    ...extraMembers
-      .filter((id) => !baseById.has(id) && simpleById.has(id))
-      .map((id) => ({
-        ...simpleById.get(id)!, assigned: false, startDate: null, endDate: null, unitPriceMm: 0,
-      })),
-  ].sort((a, b) => a.fullName.localeCompare(b.fullName));
+    ...addedRows,
+    ...[...members].sort((a, b) => a.fullName.localeCompare(b.fullName)),
+  ];
   const visibleRows = q.trim()
     ? rows.filter((m) => [m.fullName, m.roleTitle].some((v) => containsText(v ?? null, q)))
     : rows;
@@ -127,6 +134,22 @@ export default function BudgetTimeline({
       return next;
     });
   }
+
+  function addMember(userId: string) {
+    setExtraMembers((s) => (s.includes(userId) ? s : [...s, userId]));
+    setQ("");
+    setFocusUserId(userId);
+  }
+
+  useEffect(() => {
+    if (!focusUserId) return;
+    const input = scrollRef.current?.querySelector<HTMLInputElement>(
+      `[data-row="${focusUserId}"] [data-anchor-input="1"]`,
+    );
+    input?.scrollIntoView({ block: "center", inline: "nearest" });
+    input?.focus({ preventScroll: true });
+    setFocusUserId(null);
+  }, [focusUserId]);
 
   /* ── nạp thêm tháng khi cuộn ngang ─────────────────────────── */
   const extend = useCallback(async (side: "past" | "future") => {
@@ -320,8 +343,11 @@ export default function BudgetTimeline({
                 const rate = rateEdits[m.userId] ?? m.unitPriceMm;
                 return (
                   <Fragment key={m.userId}>
-                    <tr>
-                      <td className="sticky left-0 z-20 border-r border-slate-200 bg-white align-top" style={{ minWidth: NAME_W, width: NAME_W }}>
+                    <tr data-row={m.userId} className={addedIds.has(m.userId) ? "bg-amber-50/60" : ""}>
+                      <td
+                        className={`sticky left-0 z-20 border-r border-slate-200 align-top ${addedIds.has(m.userId) ? "bg-amber-50" : "bg-white"}`}
+                        style={{ minWidth: NAME_W, width: NAME_W }}
+                      >
                         <div className="flex items-start gap-2">
                           {canSeeMoney ? (
                             <button
@@ -337,7 +363,11 @@ export default function BudgetTimeline({
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
                               <span className="font-medium text-slate-700">{m.fullName}</span>
-                              {!m.assigned && (
+                              {addedIds.has(m.userId) ? (
+                                <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                                  {ja ? "追加・未保存" : "New · unsaved"}
+                                </span>
+                              ) : !m.assigned && (
                                 <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
                                   {ja ? "未アサイン" : "Not assigned"}
                                 </span>
@@ -385,6 +415,7 @@ export default function BudgetTimeline({
                           >
                             {canEdit ? (
                               <input
+                                data-anchor-input={mo.key === anchorKey ? "1" : undefined}
                                 type="number" min={0} step={0.1}
                                 className={`input num w-full text-right ${dirty.has(key) ? "border-brand-400 bg-brand-50" : ""}`}
                                 value={effort === 0 ? "" : effort}
@@ -447,9 +478,7 @@ export default function BudgetTimeline({
                 className="select w-64"
                 value=""
                 onChange={(e) => {
-                  if (!e.target.value) return;
-                  setExtraMembers((s) => [...s, e.target.value]);
-                  e.target.value = "";
+                  if (e.target.value) addMember(e.target.value);
                 }}
               >
                 <option value="">+ {ja ? "メンバーを追加" : "Add member"}</option>
